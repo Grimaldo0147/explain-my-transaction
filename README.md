@@ -1,36 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Explain My Transaction
 
-## Getting Started
+Explain Stacks blockchain transactions in simple, human-readable language.
 
-First, run the development server:
+This app helps anyone understand **what a Stacks transaction actually did**, without needing to read complex blockchain data.
+
+---
+
+## 🔍 What Is This?
+
+When you paste a **Stacks transaction hash** into the app and click **Explain**, the app:
+
+1. Fetches the real transaction from the blockchain  
+2. Extracts the important details  
+3. Explains the transaction in plain English  
+4. Shows the result in a clean interface  
+
+You don’t need to understand blockchain jargon to use it.
+
+---
+
+## 🧠 Why This App Exists
+
+Blockchain explorers show a lot of technical information, but they don’t clearly answer questions like:
+
+- Did this transaction succeed or fail?
+- Who sent it?
+- What kind of transaction was it?
+- What actually happened?
+
+**Explain My Transaction** answers those questions clearly.
+
+---
+
+## 🔄 How It Works (Step by Step)
+
+Here is what happens when you click **Explain**:
+
+1. **Frontend**
+   - You paste a transaction hash into the input box
+   - The app sends that hash to the backend
+
+2. **Backend API**
+   - The app checks if the transaction hash is valid
+   - It requests the transaction data from the Stacks blockchain (via Hiro API)
+
+3. **Transaction Parsing**
+   - The raw blockchain data is cleaned up
+   - Only useful information is kept (sender, status, fee, type, block)
+
+4. **Explanation**
+   - The app converts the parsed data into a clear English explanation
+   - No guessing, no AI hallucinations
+
+5. **UI Output**
+   - Summary cards are displayed
+   - A readable explanation is shown
+   - You can copy the explanation or view the transaction on the explorer
+
+---
+
+## 🧱 Design Principles
+
+This project follows a few simple rules:
+
+- **Facts first**  
+  Explanations are based only on real blockchain data.
+
+- **No guessing**  
+  The app does not invent information.
+
+- **One job per file**  
+  Each part of the app does one thing clearly.
+
+- **Easy to extend later**  
+  AI explanations or new blockchains can be added without rewriting the app.
+
+---
+
+## 🛠 Tech Used
+
+- **Next.js** – frontend and backend in one app  
+- **TypeScript** – safer and clearer code  
+- **Tailwind CSS** – clean and simple styling  
+- **Stacks / Hiro API** – real blockchain data  
+
+---
+
+## ✨ Features
+
+- Validates transaction hashes
+- Handles:
+  - Successful transactions
+  - Failed transactions
+  - Pending transactions
+- Shows:
+  - Sender
+  - Transaction type
+  - Fee
+  - Block height
+- Plain-English explanation
+- Copy explanation button
+- Direct link to Stacks Explorer
+
+---
+
+## ▶️ Run the App Locally
+
+If you want to run this app on your own computer:
+
+### 1. Clone the repository
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+git clone https://github.com/YOUR_USERNAME/explain-my-transaction.git
+cd explain-my-transaction
