@@ -1,5 +1,11 @@
 # Explain My Transaction
 
+## Upcoming UX Upgrade (In Progress)
+
+This project is being extended with a user-facing transaction explanation layer and a Wallet Story Mode aimed at helping non-technical users understand Stacks transactions and wallet activity in plain language.
+
+This upgrade builds on the existing Code for STX submission and focuses on onboarding, clarity, and trust.
+
 Explain Stacks blockchain transactions in simple, human-readable language.
 
 This app helps anyone understand **what a Stacks transaction actually did**, without needing to read complex blockchain data.
