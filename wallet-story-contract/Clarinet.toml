@@ -1,0 +1,8 @@
+[project]
+name = "explain-wallet-story"
+description = "Read-only helper contract for explaining transactions and wallet activity on Stacks"
+authors = ["Grimaldo"]
+telemetry = false
+
+[contracts.explain-wallet-story]
+path = "contracts/explain-wallet-story.clar"
