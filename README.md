@@ -1,5 +1,16 @@
 # Explain My Transaction
 
+## Mainnet Deployment
+
+This project includes a read-only Clarity contract deployed on
+Stacks mainnet as an on-chain UX helper.
+
+Contract name: `explain-wallet-story`  
+Network: Stacks Mainnet  
+
+The contract serves as a verifiable, on-chain anchor for
+transaction explanation and wallet story tooling.
+
 ## Upcoming UX Upgrade (In Progress)
 
 This project is being extended with a user-facing transaction explanation layer and a Wallet Story Mode aimed at helping non-technical users understand Stacks transactions and wallet activity in plain language.
