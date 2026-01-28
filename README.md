@@ -130,3 +130,8 @@ If you want to run this app on your own computer:
 ```bash
 git clone https://github.com/YOUR_USERNAME/explain-my-transaction.git
 cd explain-my-transaction
+---
+
+## Code for Stacks Submission
+
+This project is submitted as part of the Code for Stacks program to improve Stacks UX and developer experience by making blockchain transactions easier to understand.
