@@ -2,21 +2,42 @@
 
 import { useState } from "react"
 
+type ParsedTx = {
+  txid: string
+  type: string
+  sender?: string
+  receiver?: string
+  fee?: string
+  blockHeight?: string
+}
+
+function InfoCard({ label, value }: { label: string; value?: string }) {
+  if (!value) return null
+
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+      <div className="text-sm text-neutral-400">{label}</div>
+      <div className="mt-1 break-all font-mono text-sm text-white">
+        {value}
+      </div>
+    </div>
+  )
+}
+
 export default function Home() {
   const [txid, setTxid] = useState("")
-  const [parsed, setParsed] = useState<any | null>(null)
-  const [explanation, setExplanation] = useState<string | null>(null)
+  const [parsed, setParsed] = useState<ParsedTx | null>(null)
+  const [explanation, setExplanation] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState("")
 
   async function handleExplain() {
     if (!txid) return
 
     setLoading(true)
-    setError(null)
+    setError("")
     setParsed(null)
-    setExplanation(null)
+    setExplanation("")
 
     try {
       const res = await fetch("/api/explain", {
@@ -28,123 +49,69 @@ export default function Home() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || "Something went wrong")
-      } else {
-        setParsed(data.parsed)
-        setExplanation(data.explanation)
+        throw new Error(data.error || "Failed to explain transaction")
       }
-    } catch {
-      setError("Failed to connect to server")
+
+      setParsed(data.parsed)
+      setExplanation(data.explanation)
+    } catch (err: any) {
+      setError(err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  function handleCopy() {
-    if (!explanation) return
-    navigator.clipboard.writeText(explanation)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-
-  function handleReset() {
-    setTxid("")
-    setParsed(null)
-    setExplanation(null)
-    setError(null)
-    setCopied(false)
-  }
-
   return (
-    <main className="min-h-screen bg-black text-white p-6 flex flex-col items-center gap-8">
-      <h1 className="text-3xl font-bold">Explain My Transaction</h1>
+    <main className="mx-auto max-w-3xl p-6">
+      <h1 className="mb-6 text-center text-3xl font-bold text-white">
+        Explain My Transaction
+      </h1>
 
-      {/* Input + Button */}
-      <div className="w-full max-w-xl flex gap-2">
+      <div className="mb-6 flex gap-2">
         <input
-          type="text"
-          placeholder="Paste Stacks transaction hash"
+          className="flex-1 rounded-md border border-neutral-700 bg-black px-3 py-2 text-white outline-none"
+          placeholder="Paste Stacks transaction ID"
           value={txid}
           onChange={(e) => setTxid(e.target.value)}
-          className="flex-1 px-4 py-3 rounded bg-white text-black"
         />
         <button
           onClick={handleExplain}
           disabled={loading}
-          className="px-6 py-3 rounded bg-white text-black font-semibold disabled:opacity-50"
+          className="rounded-md bg-white px-4 py-2 font-semibold text-black disabled:opacity-50"
         >
-          {loading ? "Explaining…" : "Explain"}
+          {loading ? "Explaining..." : "Explain"}
         </button>
       </div>
 
-      {/* Error */}
-      {error && <p className="text-red-400">{error}</p>}
+      {error && (
+        <div className="mb-4 rounded-md border border-red-700 bg-red-900/30 p-3 text-red-300">
+          {error}
+        </div>
+      )}
 
-      {/* Transaction Summary Cards */}
       {parsed && (
-        <div className="grid grid-cols-2 gap-4 w-full max-w-xl">
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <InfoCard label="Sender" value={parsed.sender} />
+
+          {/* ✅ RECEIVER CARD (TOKEN TRANSFERS ONLY) */}
+          {parsed.type === "token_transfer" && parsed.receiver && (
+            <InfoCard label="Receiver" value={parsed.receiver} />
+          )}
+
           <InfoCard label="Type" value={parsed.type} />
           <InfoCard label="Fee" value={parsed.fee} />
           <InfoCard label="Block" value={parsed.blockHeight} />
         </div>
       )}
 
-      {/* Explanation */}
-      {explanation && parsed && (
-        <div className="w-full max-w-xl bg-gray-900 border border-gray-700 rounded p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold">Explanation</h2>
-
-            <div className="flex gap-3 text-sm">
-              <button
-                onClick={handleCopy}
-                className="text-blue-400 hover:underline"
-              >
-                {copied ? "Copied!" : "Copy"}
-              </button>
-
-              <a
-                href={`https://explorer.hiro.so/txid/${parsed.txid}?chain=mainnet`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
-              >
-                View on Explorer ↗
-              </a>
-            </div>
+      {explanation && (
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+          <div className="mb-2 text-sm font-semibold text-neutral-400">
+            Explanation
           </div>
-
-          <p className="whitespace-pre-line text-gray-200">
-            {explanation}
-          </p>
+          <p className="text-white">{explanation}</p>
         </div>
       )}
-
-      {/* Clear Button */}
-      {(parsed || error) && (
-        <button
-          onClick={handleReset}
-          className="text-sm text-gray-400 hover:underline"
-        >
-          Clear
-        </button>
-      )}
     </main>
-  )
-}
-
-function InfoCard({
-  label,
-  value,
-}: {
-  label: string
-  value: string | number
-}) {
-  return (
-    <div className="bg-gray-900 border border-gray-700 rounded p-4">
-      <p className="text-sm text-gray-400">{label}</p>
-      <p className="font-mono break-all">{value}</p>
-    </div>
   )
 }
