@@ -1,137 +1,72 @@
 # Explain My Transaction
 
-## Mainnet Deployment
+**Explain My Transaction** is a UX-first tool that helps users understand what actually happened in a Stacks transaction — in plain, human-readable language.
 
-This project includes a read-only Clarity contract deployed on
-Stacks mainnet as an on-chain UX helper.
-
-Contract name: `explain-wallet-story`  
-Network: Stacks Mainnet  
-
-The contract serves as a verifiable, on-chain anchor for
-transaction explanation and wallet story tooling.
-
-## Upcoming UX Upgrade (In Progress)
-
-This project is being extended with a user-facing transaction explanation layer and a Wallet Story Mode aimed at helping non-technical users understand Stacks transactions and wallet activity in plain language.
-
-This upgrade builds on the existing Code for STX submission and focuses on onboarding, clarity, and trust.
-
-Explain Stacks blockchain transactions in simple, human-readable language.
-
-This app helps anyone understand **what a Stacks transaction actually did**, without needing to read complex blockchain data.
+Most blockchain explorers expose raw data.  
+This project focuses on **meaning, clarity, and trust**.
 
 ---
 
-## 🔍 What Is This?
+## Problem
 
-When you paste a **Stacks transaction hash** into the app and click **Explain**, the app:
+For many users, interacting with Stacks feels opaque:
 
-1. Fetches the real transaction from the blockchain  
-2. Extracts the important details  
-3. Explains the transaction in plain English  
-4. Shows the result in a clean interface  
+- Transactions show hashes, hex, and fields without explanation
+- Users often sign transactions without fully understanding the outcome
+- Explorers are optimized for developers, not everyday users
+- Confusion during onboarding leads to mistrust and drop-off
 
-You don’t need to understand blockchain jargon to use it.
-
----
-
-## 🧠 Why This App Exists
-
-Blockchain explorers show a lot of technical information, but they don’t clearly answer questions like:
-
-- Did this transaction succeed or fail?
-- Who sent it?
-- What kind of transaction was it?
-- What actually happened?
-
-**Explain My Transaction** answers those questions clearly.
+This problem is especially visible for **non-technical users** entering the Stacks ecosystem.
 
 ---
 
-## 🔄 How It Works (Step by Step)
+## Solution
 
-Here is what happens when you click **Explain**:
+Explain My Transaction translates raw Stacks transactions into clear explanations that answer questions like:
 
-1. **Frontend**
-   - You paste a transaction hash into the input box
-   - The app sends that hash to the backend
+- What type of transaction was this?
+- What did it do to my wallet?
+- How was it anchored?
+- Why did it succeed or fail?
 
-2. **Backend API**
-   - The app checks if the transaction hash is valid
-   - It requests the transaction data from the Stacks blockchain (via Hiro API)
-
-3. **Transaction Parsing**
-   - The raw blockchain data is cleaned up
-   - Only useful information is kept (sender, status, fee, type, block)
-
-4. **Explanation**
-   - The app converts the parsed data into a clear English explanation
-   - No guessing, no AI hallucinations
-
-5. **UI Output**
-   - Summary cards are displayed
-   - A readable explanation is shown
-   - You can copy the explanation or view the transaction on the explorer
+The goal is **not abstraction**, but **understanding**.
 
 ---
 
-## 🧱 Design Principles
+## Current State
 
-This project follows a few simple rules:
+The project is already live and functional:
 
-- **Facts first**  
-  Explanations are based only on real blockchain data.
+- Transaction parsing and explanation logic using Stacks tooling
+- UX-first design focused on readability and comprehension
+- A read-only Clarity helper contract deployed on Stacks mainnet
+- Production-ready web build deployed on Vercel
 
-- **No guessing**  
-  The app does not invent information.
-
-- **One job per file**  
-  Each part of the app does one thing clearly.
-
-- **Easy to extend later**  
-  AI explanations or new blockchains can be added without rewriting the app.
+This demonstrates the ability to ship, iterate, and deploy on mainnet.
 
 ---
 
-## 🛠 Tech Used
+## Mainnet Deployment (On-chain Proof)
 
-- **Next.js** – frontend and backend in one app  
-- **TypeScript** – safer and clearer code  
-- **Tailwind CSS** – clean and simple styling  
-- **Stacks / Hiro API** – real blockchain data  
+The project includes a small, read-only Clarity helper contract deployed on **Stacks mainnet**.
 
----
+- Purpose: act as an on-chain UX anchor for explanation and wallet-story tooling
+- The contract is intentionally simple and safe
+- It provides verifiable proof of Stacks-native development
 
-## ✨ Features
-
-- Validates transaction hashes
-- Handles:
-  - Successful transactions
-  - Failed transactions
-  - Pending transactions
-- Shows:
-  - Sender
-  - Transaction type
-  - Fee
-  - Block height
-- Plain-English explanation
-- Copy explanation button
-- Direct link to Stacks Explorer
+> The contract does not move funds or perform complex logic.  
+> It exists to support UX tooling and future extensions.
 
 ---
 
-## ▶️ Run the App Locally
+## Repository Structure
 
-If you want to run this app on your own computer:
+This repository contains **two clearly separated parts**:
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/explain-my-transaction.git
-cd explain-my-transaction
----
-
-## Code for Stacks Submission
-
-This project is submitted as part of the Code for Stacks program to improve Stacks UX and developer experience by making blockchain transactions easier to understand.
+```text
+/
+├─ src/                      # Next.js application (UX + logic)
+├─ wallet-story-contract/    # Clarity smart contract tooling
+├─ README.md
+├─ PROGRESS.md
+└─ STACKS.md
