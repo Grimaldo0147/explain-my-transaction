@@ -2,7 +2,7 @@
 import { deserializeTransaction } from "@stacks/transactions";
 
 export function parseStacksTransaction(rawTxHex: string) {
-  // rawTxHex should be hex string without 0x prefix
-  const bytes = Buffer.from(rawTxHex.replace(/^0x/, ""), "hex");
+  const hex = rawTxHex.replace(/^0x/, "");
+  const bytes = Buffer.from(hex, "hex");
   return deserializeTransaction(bytes);
 }
