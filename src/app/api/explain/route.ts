@@ -1,66 +1,54 @@
-import { NextResponse } from "next/server"
-import { parseStacksTx } from "../../../lib/parseStacksTx"
-import { explainParsedTx } from "../../../lib/explainParsedTx"
+import { NextResponse } from "next/server";
+import { parseStacksTx } from "@/utils/parseStacksTx";
+import { explainParsedTx } from "@/lib/explainParsedTx";
 
-// Simple Stacks txid validator
+// txid = 64 hex chars
 function isValidTxid(txid: string) {
-  if (!txid.startsWith("0x")) return false
-  if (txid.length !== 66) return false
-  if (!/^0x[a-fA-F0-9]+$/.test(txid)) return false
-  return true
+  return /^[0-9a-fA-F]{64}$/.test(txid.trim());
 }
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const { txid } = await request.json()
+    const body = await req.json().catch(() => ({}));
+    const txid = String(body?.txid ?? "").trim();
 
-    // 1. Validate presence
-    if (!txid) {
+    if (!txid || !isValidTxid(txid)) {
       return NextResponse.json(
-        { error: "Transaction hash is required." },
+        { error: "Invalid txid. Expected 64 hex characters." },
         { status: 400 }
-      )
+      );
     }
 
-    // 2. Validate format
-    if (!isValidTxid(txid)) {
-      return NextResponse.json(
-        {
-          error:
-            "Invalid transaction hash format. Please provide a valid Stacks txid.",
-        },
-        { status: 400 }
-      )
-    }
+    // ✅ Fetch RAW tx hex (this is what your parser needs)
+    const rawRes = await fetch(`https://api.hiro.so/v2/transactions/${txid}/raw`, {
+      cache: "no-store",
+    });
 
-    // 3. Fetch transaction from Hiro API
-    const res = await fetch(
-      `https://api.mainnet.hiro.so/extended/v1/tx/${txid}`
-    )
-
-    if (!res.ok) {
+    if (!rawRes.ok) {
       return NextResponse.json(
-        { error: "Transaction not found on Stacks." },
+        { error: `Could not fetch raw tx. Status: ${rawRes.status}` },
         { status: 404 }
-      )
+      );
     }
 
-    // 4. Parse transaction
-    const txData = await res.json()
-    const parsed = parseStacksTx(txData)
+    const rawTxHex = (await rawRes.text()).trim();
 
-    // 5. Deterministic explanation (NO AI)
-    const explanation = explainParsedTx(parsed)
+    // Some endpoints return quotes; normalize just in case
+    const cleanedHex = rawTxHex.replace(/^"|"$/g, "");
+
+    const parsedTx = parseStacksTx(cleanedHex);
+    const explanation = explainParsedTx(parsedTx);
 
     return NextResponse.json({
-      success: true,
-      parsed,
+      txid,
+      rawTxHex: cleanedHex,
+      parsedTx,
       explanation,
-    })
-  } catch (error) {
+    });
+  } catch (err: any) {
     return NextResponse.json(
-      { error: "Internal server error while explaining transaction." },
+      { error: err?.message ?? "Server error" },
       { status: 500 }
-    )
+    );
   }
 }
