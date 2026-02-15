@@ -1,54 +1,84 @@
-import { NextResponse } from "next/server";
-import { parseStacksTx } from "@/utils/parseStacksTx";
-import { explainParsedTx } from "@/lib/explainParsedTx";
+// src/app/api/explain/route.ts
 
-// txid = 64 hex chars
-function isValidTxid(txid: string) {
-  return /^[0-9a-fA-F]{64}$/.test(txid.trim());
-}
+import { NextRequest, NextResponse } from "next/server";
+import {
+  normalizeTxid,
+  isValidTxid,
+  resolveNetworkAndFetchTx,
+  serializeError,
+  type StacksNetwork,
+} from "@/utils/parseStacksTx";
+import { explainTransaction } from "@/features/explain-transaction/explainTx";
 
-export async function POST(req: Request) {
+/**
+ * POST /api/explain
+ * body: { txid: string, network?: "mainnet" | "testnet" }
+ */
+export async function POST(req: NextRequest) {
+  const step = (s: string) => s;
+
   try {
-    const body = await req.json().catch(() => ({}));
-    const txid = String(body?.txid ?? "").trim();
+    const body = await req.json().catch(() => ({} as any));
+    const inputTxid = String(body?.txid || "");
+    const preferredNetwork: StacksNetwork | undefined =
+      body?.network === "mainnet" || body?.network === "testnet"
+        ? body.network
+        : undefined;
 
-    if (!txid || !isValidTxid(txid)) {
+    const txid = normalizeTxid(inputTxid);
+
+    if (!isValidTxid(txid)) {
       return NextResponse.json(
-        { error: "Invalid txid. Expected 64 hex characters." },
+        {
+          ok: false,
+          error:
+            "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
+          step: step("validate"),
+          txid,
+        },
         { status: 400 }
       );
     }
 
-    // ✅ Fetch RAW tx hex (this is what your parser needs)
-    const rawRes = await fetch(`https://api.hiro.so/v2/transactions/${txid}/raw`, {
-      cache: "no-store",
-    });
-
-    if (!rawRes.ok) {
-      return NextResponse.json(
-        { error: `Could not fetch raw tx. Status: ${rawRes.status}` },
-        { status: 404 }
-      );
-    }
-
-    const rawTxHex = (await rawRes.text()).trim();
-
-    // Some endpoints return quotes; normalize just in case
-    const cleanedHex = rawTxHex.replace(/^"|"$/g, "");
-
-    const parsedTx = parseStacksTx(cleanedHex);
-    const explanation = explainParsedTx(parsedTx);
-
-    return NextResponse.json({
+    // Fetch tx JSON (try mainnet then testnet unless user picked one)
+    const { network, apiBase, tx } = await resolveNetworkAndFetchTx(
       txid,
-      rawTxHex: cleanedHex,
-      parsedTx,
-      explanation,
-    });
-  } catch (err: any) {
+      preferredNetwork
+    );
+
+    // Explain it (must be JSON-serializable)
+    const explained = explainTransaction(tx);
+
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 }
+      {
+        ok: true,
+        network,
+        apiBase,
+        txid,
+        explained,
+        // optional minimal tx payload for debugging
+        tx: {
+          tx_id: tx?.tx_id,
+          tx_type: tx?.tx_type,
+          tx_status: tx?.tx_status,
+        },
+      },
+      { status: 200 }
+    );
+  } catch (err: any) {
+    // Always return JSON-safe error
+    const safe = serializeError(err);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Server error while explaining transaction.",
+        step: step("server"),
+        message: String(err?.message || "Unknown error"),
+        status: err?.status || 500,
+        debug: safe,
+      },
+      { status: err?.status || 500 }
     );
   }
 }
