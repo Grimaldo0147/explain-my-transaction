@@ -1,84 +1,115 @@
-// src/app/api/explain/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
-import {
-  normalizeTxid,
-  isValidTxid,
-  resolveNetworkAndFetchTx,
-  serializeError,
-  type StacksNetwork,
-} from "@/utils/parseStacksTx";
+import { parseStacksTransaction } from "@/utils/parseStacksTx";
 import { explainTransaction } from "@/features/explain-transaction/explainTx";
 
-/**
- * POST /api/explain
- * body: { txid: string, network?: "mainnet" | "testnet" }
- */
+type Network = "mainnet" | "testnet";
+
+function safeJson(data: any, status = 200) {
+  return new NextResponse(
+    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    {
+      status,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+}
+
+function isValidTxid(input: string) {
+  const s = input.trim().toLowerCase();
+  const cleaned = s.startsWith("0x") ? s.slice(2) : s;
+  return /^[0-9a-f]{64}$/.test(cleaned);
+}
+
+function normalizeTxid(input: string) {
+  const s = input.trim().toLowerCase();
+  return s.startsWith("0x") ? s : `0x${s}`;
+}
+
 export async function POST(req: NextRequest) {
-  const step = (s: string) => s;
-
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const inputTxid = String(body?.txid || "");
-    const preferredNetwork: StacksNetwork | undefined =
-      body?.network === "mainnet" || body?.network === "testnet"
-        ? body.network
-        : undefined;
+    const body = await req.json();
+    const txidInput = String(body?.txid ?? "").trim();
+    const network = (String(body?.network ?? "mainnet") as Network) === "testnet" ? "testnet" : "mainnet";
 
-    const txid = normalizeTxid(inputTxid);
-
-    if (!isValidTxid(txid)) {
-      return NextResponse.json(
+    if (!txidInput || !isValidTxid(txidInput)) {
+      return safeJson(
         {
-          ok: false,
-          error:
-            "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
-          step: step("validate"),
-          txid,
+          error: "Invalid txid",
+          message: "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
+          status: 400,
         },
-        { status: 400 }
+        400
       );
     }
 
-    // Fetch tx JSON (try mainnet then testnet unless user picked one)
-    const { network, apiBase, tx } = await resolveNetworkAndFetchTx(
+    const txid = normalizeTxid(txidInput);
+
+    const base =
+      network === "testnet" ? "https://api.testnet.hiro.so" : "https://api.hiro.so";
+
+    const sourceUrl = `${base}/extended/v1/tx/${txid}/raw`;
+
+    const rawRes = await fetch(sourceUrl, { cache: "no-store" });
+
+    if (!rawRes.ok) {
+      return safeJson(
+        {
+          error: "Could not fetch raw tx",
+          message: `Could not fetch raw tx. Status: ${rawRes.status}`,
+          status: rawRes.status,
+          networkChecked: base,
+          source: sourceUrl,
+        },
+        400
+      );
+    }
+
+    // Hiro raw endpoint returns JSON (usually { raw_tx: "0x..." } or similar)
+    const rawJson: any = await rawRes.json();
+    const rawTxHex =
+      rawJson?.raw_tx || rawJson?.rawTx || rawJson?.tx || rawJson?.raw || "";
+
+    if (!rawTxHex || typeof rawTxHex !== "string") {
+      return safeJson(
+        {
+          error: "Unexpected raw tx shape",
+          message: "Hiro returned an unexpected raw tx format.",
+          status: 500,
+          networkChecked: base,
+          source: sourceUrl,
+          raw: rawJson,
+        },
+        500
+      );
+    }
+
+    const parsed = parseStacksTransaction(rawTxHex);
+
+    const explained = await explainTransaction(parsed, {
       txid,
-      preferredNetwork
-    );
+      network,
+      baseUrl: base,
+    });
 
-    // Explain it (must be JSON-serializable)
-    const explained = explainTransaction(tx);
-
-    return NextResponse.json(
+    return safeJson(
       {
         ok: true,
         network,
-        apiBase,
-        txid,
-        explained,
-        // optional minimal tx payload for debugging
-        tx: {
-          tx_id: tx?.tx_id,
-          tx_type: tx?.tx_type,
-          tx_status: tx?.tx_status,
-        },
+        source: sourceUrl,
+        parsed,
+        explanation: explained,
       },
-      { status: 200 }
+      200
     );
-  } catch (err: any) {
-    // Always return JSON-safe error
-    const safe = serializeError(err);
-
-    return NextResponse.json(
+  } catch (e: any) {
+    return safeJson(
       {
-        ok: false,
         error: "Server error while explaining transaction.",
-        step: step("server"),
-        message: String(err?.message || "Unknown error"),
-        status: err?.status || 500,
-        debug: safe,
+        step: "explain",
+        message: e?.message || "Unknown error",
+        status: 500,
       },
-      { status: err?.status || 500 }
+      500
     );
   }
 }
