@@ -1,199 +1,194 @@
 // src/features/explain-transaction/explainTx.ts
+import type { HiroEvent, HiroTx, Network } from "@/utils/parseStacksTx";
 
-type ExplainResult = {
-  summary: string;
-  txType: string;
-  status?: string;
-  sender?: string;
-  recipient?: string;
-  amount?: string;
-  feeRate?: string;
-  nonce?: number;
-  contractId?: string;
-  functionName?: string;
-  memo?: string;
-  blockHeight?: number;
-  blockTime?: string;
-  raw?: any; // optional: include minimal raw fields
-};
+function formatMicroStxToStx(micro: any) {
+  // Hiro often gives string numbers.
+  // micro-STX => STX: divide by 1_000_000
+  const s = String(micro ?? "");
+  if (!/^\d+$/.test(s)) return null;
 
-/**
- * Build a human-friendly explanation from Hiro tx JSON.
- * This function MUST return plain JSON-serializable values (no BigInt).
- */
-export function explainTransaction(tx: any): ExplainResult {
-  const txType = String(tx?.tx_type || "unknown");
-  const status = tx?.tx_status ? String(tx.tx_status) : undefined;
+  // safe decimal formatting without floating drift
+  const padded = s.padStart(7, "0"); // at least 1 digit + 6 decimals
+  const whole = padded.slice(0, -6).replace(/^0+/, "") || "0";
+  const frac = padded.slice(-6).replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
+}
 
-  const sender = tx?.sender_address ? String(tx.sender_address) : undefined;
-  const feeRate = tx?.fee_rate ? String(tx.fee_rate) : undefined;
-  const nonce =
-    typeof tx?.nonce === "number" ? tx.nonce : safeNumber(tx?.nonce);
+function shortAddr(a?: string, left = 6, right = 4) {
+  if (!a) return null;
+  if (a.length <= left + right + 3) return a;
+  return `${a.slice(0, left)}…${a.slice(-right)}`;
+}
 
-  const blockHeight =
-    typeof tx?.block_height === "number"
-      ? tx.block_height
-      : safeNumber(tx?.block_height);
+function pickRecipient(tx: HiroTx): string | null {
+  if (tx?.tx_type === "token_transfer") {
+    return tx?.token_transfer?.recipient_address ?? null;
+  }
+  if (tx?.tx_type === "contract_call") {
+    return tx?.contract_call?.contract_id ?? null;
+  }
+  if (tx?.tx_type === "smart_contract") {
+    return tx?.smart_contract?.contract_id ?? null;
+  }
+  return null;
+}
 
-  const blockTime = tx?.block_time_iso
-    ? String(tx.block_time_iso)
-    : tx?.block_time
-      ? String(tx.block_time)
-      : undefined;
+function pickAmount(tx: HiroTx): { raw: string | null; stx: string | null } {
+  if (tx?.tx_type === "token_transfer") {
+    const raw = tx?.token_transfer?.amount ?? null;
+    return { raw: raw ? String(raw) : null, stx: raw ? formatMicroStxToStx(raw) : null };
+  }
+  return { raw: null, stx: null };
+}
 
-  // Token transfer
-  if (txType === "token_transfer" && tx?.token_transfer) {
-    const recipient = tx.token_transfer?.recipient_address
-      ? String(tx.token_transfer.recipient_address)
-      : undefined;
+function normalizeEvents(events: HiroEvent[]) {
+  // Keep it simple + UI-friendly (you can expand later)
+  return events.slice(0, 50).map((e) => {
+    const type = e?.event_type || e?.type || "event";
+    const asset = e?.asset?.asset_id || e?.asset?.asset_identifier || e?.asset_identifier || null;
 
-    const amount = tx.token_transfer?.amount
-      ? String(tx.token_transfer.amount)
-      : undefined;
+    // STX transfers sometimes appear under "stx_asset" / "stx_transfer_event"
+    const amount =
+      e?.stx_transfer_event?.amount ??
+      e?.stx_asset?.amount ??
+      e?.token_transfer_event?.amount ??
+      e?.ft_transfer_event?.amount ??
+      e?.nft_transfer_event?.asset_id ??
+      null;
 
-    const memo = tx.token_transfer?.memo ? String(tx.token_transfer.memo) : undefined;
+    const sender =
+      e?.stx_transfer_event?.sender ??
+      e?.ft_transfer_event?.sender ??
+      e?.nft_transfer_event?.sender ??
+      e?.sender ??
+      null;
+
+    const recipient =
+      e?.stx_transfer_event?.recipient ??
+      e?.ft_transfer_event?.recipient ??
+      e?.nft_transfer_event?.recipient ??
+      e?.recipient ??
+      null;
 
     return {
-      summary: buildSummary({
-        kind: "token_transfer",
-        sender,
-        recipient,
-        amount,
-        status,
-      }),
-      txType,
-      status,
+      type,
+      asset,
+      amount: amount != null ? String(amount) : null,
       sender,
       recipient,
-      amount,
-      feeRate,
-      nonce,
-      memo,
-      blockHeight,
-      blockTime,
-      raw: pick(tx, ["tx_id", "tx_status", "tx_type"]),
+      senderShort: shortAddr(sender || undefined),
+      recipientShort: shortAddr(recipient || undefined),
+      raw: e,
     };
-  }
-
-  // Contract call
-  if (txType === "contract_call" && tx?.contract_call) {
-    const contractId = tx.contract_call?.contract_id
-      ? String(tx.contract_call.contract_id)
-      : undefined;
-
-    const functionName = tx.contract_call?.function_name
-      ? String(tx.contract_call.function_name)
-      : undefined;
-
-    return {
-      summary: buildSummary({
-        kind: "contract_call",
-        sender,
-        contractId,
-        functionName,
-        status,
-      }),
-      txType,
-      status,
-      sender,
-      feeRate,
-      nonce,
-      contractId,
-      functionName,
-      blockHeight,
-      blockTime,
-      raw: pick(tx, ["tx_id", "tx_status", "tx_type"]),
-    };
-  }
-
-  // Smart contract publish
-  if (txType === "smart_contract" && tx?.smart_contract) {
-    const contractId = tx.smart_contract?.contract_id
-      ? String(tx.smart_contract.contract_id)
-      : undefined;
-
-    return {
-      summary: buildSummary({
-        kind: "smart_contract",
-        sender,
-        contractId,
-        status,
-      }),
-      txType,
-      status,
-      sender,
-      feeRate,
-      nonce,
-      contractId,
-      blockHeight,
-      blockTime,
-      raw: pick(tx, ["tx_id", "tx_status", "tx_type"]),
-    };
-  }
-
-  // Coinbase or other
-  return {
-    summary: buildSummary({
-      kind: txType,
-      sender,
-      status,
-    }),
-    txType,
-    status,
-    sender,
-    feeRate,
-    nonce,
-    blockHeight,
-    blockTime,
-    raw: pick(tx, ["tx_id", "tx_status", "tx_type"]),
-  };
+  });
 }
 
-function safeNumber(v: any): number | undefined {
-  if (v == null) return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function pick(obj: any, keys: string[]) {
-  const out: any = {};
-  for (const k of keys) out[k] = obj?.[k];
-  return out;
-}
-
-function buildSummary(input: {
-  kind: string;
-  sender?: string;
-  recipient?: string;
-  amount?: string;
-  contractId?: string;
-  functionName?: string;
-  status?: string;
+export function explainTransaction(input: {
+  network: Network;
+  txid: string; // 0x...
+  tx: HiroTx;
+  events: HiroEvent[];
 }) {
-  const s = input.sender ? shortAddr(input.sender) : "Unknown sender";
-  const st = input.status ? ` (${input.status})` : "";
+  const { network, txid, tx, events } = input;
 
-  if (input.kind === "token_transfer") {
-    const r = input.recipient ? shortAddr(input.recipient) : "unknown recipient";
-    const a = input.amount ? input.amount : "unknown amount";
-    return `${s} transferred ${a} µSTX to ${r}${st}`;
+  const feeMicro = tx?.fee_rate ?? tx?.fee ?? tx?.execution_cost_read_count ?? null;
+  const feeStx = formatMicroStxToStx(tx?.fee_rate ?? tx?.fee);
+
+  const sender = tx?.sender_address ?? tx?.origin_address ?? null;
+  const recipient = pickRecipient(tx);
+  const amount = pickAmount(tx);
+
+  const status =
+    tx?.tx_status ||
+    (tx?.canonical === false ? "dropped" : null) ||
+    (tx?.block_height ? "success" : "pending");
+
+  const type = tx?.tx_type ?? tx?.type ?? "unknown";
+
+  const when =
+    tx?.burn_block_time_iso ||
+    tx?.block_time_iso ||
+    tx?.burn_block_time ||
+    tx?.block_time ||
+    null;
+
+  const normalizedEvents = normalizeEvents(events);
+
+  // Helpful “cards”
+  const cards = {
+    sender: {
+      title: "Sender",
+      value: sender,
+      valueShort: shortAddr(sender || undefined),
+    },
+    recipient: {
+      title: "Recipient / Target",
+      value: recipient,
+      valueShort: shortAddr(recipient || undefined),
+    },
+    amount: {
+      title: "Amount",
+      value: amount.stx ? `${amount.stx} STX` : amount.raw ? String(amount.raw) : null,
+      microStx: amount.raw,
+    },
+    fee: {
+      title: "Fee",
+      value: feeStx ? `${feeStx} STX` : (feeMicro != null ? String(feeMicro) : null),
+      microStx: tx?.fee_rate ?? tx?.fee ?? null,
+    },
+    type: {
+      title: "Type",
+      value: type,
+    },
+    status: {
+      title: "Status",
+      value: status,
+    },
+  };
+
+  // Extra details by type
+  let details: any = null;
+  if (type === "token_transfer") {
+    details = {
+      memo: tx?.token_transfer?.memo ?? null,
+      recipient: tx?.token_transfer?.recipient_address ?? null,
+      amountMicroStx: tx?.token_transfer?.amount ?? null,
+      amountStx: formatMicroStxToStx(tx?.token_transfer?.amount),
+    };
+  } else if (type === "contract_call") {
+    details = {
+      contract_id: tx?.contract_call?.contract_id ?? null,
+      function_name: tx?.contract_call?.function_name ?? null,
+      function_args: tx?.contract_call?.function_args ?? null,
+    };
+  } else if (type === "smart_contract") {
+    details = {
+      contract_id: tx?.smart_contract?.contract_id ?? null,
+      clarity_version: tx?.smart_contract?.clarity_version ?? null,
+    };
   }
 
-  if (input.kind === "contract_call") {
-    const c = input.contractId ? input.contractId : "unknown contract";
-    const f = input.functionName ? input.functionName : "unknown function";
-    return `${s} called ${f} on ${c}${st}`;
-  }
-
-  if (input.kind === "smart_contract") {
-    const c = input.contractId ? input.contractId : "unknown contract";
-    return `${s} published contract ${c}${st}`;
-  }
-
-  return `${s} submitted a ${input.kind} transaction${st}`;
-}
-
-function shortAddr(addr: string) {
-  if (addr.length <= 14) return addr;
-  return `${addr.slice(0, 6)}…${addr.slice(-6)}`;
+  return {
+    ok: true,
+    network,
+    txid,
+    overview: {
+      txid,
+      network,
+      status,
+      type,
+      sender,
+      recipient,
+      feeMicroStx: tx?.fee_rate ?? tx?.fee ?? null,
+      feeStx,
+      block_height: tx?.block_height ?? null,
+      burn_block_height: tx?.burn_block_height ?? null,
+      timestamp: when,
+      canonical: typeof tx?.canonical === "boolean" ? tx.canonical : null,
+    },
+    cards,
+    details,
+    events: normalizedEvents,
+    rawTx: tx, // still JSON-safe (Hiro response)
+  };
 }

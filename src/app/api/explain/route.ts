@@ -1,115 +1,74 @@
+// src/app/api/explain/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { parseStacksTransaction } from "@/utils/parseStacksTx";
+import {
+  normalizeTxid,
+  isValidStacksTxidHex,
+  parseStacksTransaction,
+  resolveNetworkAndFetchTx,
+  type Network,
+} from "@/utils/parseStacksTx";
 import { explainTransaction } from "@/features/explain-transaction/explainTx";
 
-type Network = "mainnet" | "testnet";
+type Body = {
+  txid?: string;
+  network?: Network | "auto";
+};
 
-function safeJson(data: any, status = 200) {
-  return new NextResponse(
-    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
-    {
-      status,
-      headers: { "Content-Type": "application/json" },
-    }
-  );
-}
-
-function isValidTxid(input: string) {
-  const s = input.trim().toLowerCase();
-  const cleaned = s.startsWith("0x") ? s.slice(2) : s;
-  return /^[0-9a-f]{64}$/.test(cleaned);
-}
-
-function normalizeTxid(input: string) {
-  const s = input.trim().toLowerCase();
-  return s.startsWith("0x") ? s : `0x${s}`;
+function jsonError(status: number, payload: Record<string, any>) {
+  return NextResponse.json(payload, { status });
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const txidInput = String(body?.txid ?? "").trim();
-    const network = (String(body?.network ?? "mainnet") as Network) === "testnet" ? "testnet" : "mainnet";
+    const body = (await req.json()) as Body;
 
-    if (!txidInput || !isValidTxid(txidInput)) {
-      return safeJson(
-        {
-          error: "Invalid txid",
-          message: "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
-          status: 400,
-        },
-        400
-      );
+    const txidInput = String(body?.txid ?? "");
+    const network = (body?.network ?? "auto") as Body["network"];
+
+    const { normalized, with0x } = normalizeTxid(txidInput);
+
+    if (!isValidStacksTxidHex(normalized)) {
+      return jsonError(400, {
+        error: "Invalid txid",
+        step: "validate",
+        message:
+          "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
+        txid: txidInput,
+      });
     }
 
-    const txid = normalizeTxid(txidInput);
+    const fetched =
+      network === "mainnet" || network === "testnet"
+        ? await parseStacksTransaction({ txid: with0x, network })
+        : await resolveNetworkAndFetchTx(with0x);
 
-    const base =
-      network === "testnet" ? "https://api.testnet.hiro.so" : "https://api.hiro.so";
-
-    const sourceUrl = `${base}/extended/v1/tx/${txid}/raw`;
-
-    const rawRes = await fetch(sourceUrl, { cache: "no-store" });
-
-    if (!rawRes.ok) {
-      return safeJson(
-        {
-          error: "Could not fetch raw tx",
-          message: `Could not fetch raw tx. Status: ${rawRes.status}`,
-          status: rawRes.status,
-          networkChecked: base,
-          source: sourceUrl,
-        },
-        400
-      );
-    }
-
-    // Hiro raw endpoint returns JSON (usually { raw_tx: "0x..." } or similar)
-    const rawJson: any = await rawRes.json();
-    const rawTxHex =
-      rawJson?.raw_tx || rawJson?.rawTx || rawJson?.tx || rawJson?.raw || "";
-
-    if (!rawTxHex || typeof rawTxHex !== "string") {
-      return safeJson(
-        {
-          error: "Unexpected raw tx shape",
-          message: "Hiro returned an unexpected raw tx format.",
-          status: 500,
-          networkChecked: base,
-          source: sourceUrl,
-          raw: rawJson,
-        },
-        500
-      );
-    }
-
-    const parsed = parseStacksTransaction(rawTxHex);
-
-    const explained = await explainTransaction(parsed, {
-      txid,
-      network,
-      baseUrl: base,
+    const explained = explainTransaction({
+      network: fetched.network,
+      txid: fetched.txid,
+      tx: fetched.tx,
+      events: fetched.events,
     });
 
-    return safeJson(
-      {
-        ok: true,
-        network,
-        source: sourceUrl,
-        parsed,
-        explanation: explained,
-      },
-      200
-    );
+    return NextResponse.json(explained, { status: 200 });
   } catch (e: any) {
-    return safeJson(
-      {
-        error: "Server error while explaining transaction.",
-        step: "explain",
-        message: e?.message || "Unknown error",
-        status: 500,
-      },
-      500
-    );
+    const status = typeof e?.status === "number" ? e.status : 500;
+
+    // Prevent HTML pages from becoming "message"
+    const msg =
+      typeof e?.message === "string" && e.message.includes("<!DOCTYPE html")
+        ? "Server returned HTML instead of JSON (check your fetch URL / runtime error)."
+        : e?.message || "Unknown error";
+
+    return jsonError(status, {
+      error: "Server error while explaining transaction.",
+      step: e?.step || "explain",
+      message: msg,
+      status,
+      source: e?.url || null,
+      note:
+        status === 404
+          ? "Transaction not found on this network."
+          : "Check server logs for details.",
+    });
   }
 }

@@ -1,142 +1,131 @@
 // src/utils/parseStacksTx.ts
 
-export type StacksNetwork = "mainnet" | "testnet";
+export type Network = "mainnet" | "testnet";
 
-export type FetchTxResult = {
-  network: StacksNetwork;
-  apiBase: string;
-  tx: any;
-  txid: string; // normalized (no 0x)
+export type HiroTx = Record<string, any>;
+export type HiroEvent = Record<string, any>;
+
+const HIRO_BASE: Record<Network, string> = {
+  mainnet: "https://api.hiro.so",
+  testnet: "https://api.testnet.hiro.so",
 };
 
-/**
- * Normalize user input into a Stacks txid:
- * - trims
- * - removes leading 0x if present
- * - lowercases
- */
-export function normalizeTxid(input: string): string {
-  const raw = (input || "").trim();
-  const no0x = raw.toLowerCase().startsWith("0x") ? raw.slice(2) : raw;
-  return no0x.toLowerCase();
+export function normalizeTxid(input: string) {
+  const trimmed = (input || "").trim();
+  const no0x = trimmed.toLowerCase().startsWith("0x")
+    ? trimmed.slice(2)
+    : trimmed;
+
+  return {
+    raw: trimmed,
+    normalized: no0x.toLowerCase(),
+    with0x: `0x${no0x.toLowerCase()}`,
+  };
 }
 
-/**
- * True if txid looks like 64 hex chars (Stacks txid).
- */
-export function isValidTxid(txid: string): boolean {
-  return /^[0-9a-f]{64}$/.test(txid);
+export function isValidStacksTxidHex(hexNo0x: string) {
+  return /^[0-9a-f]{64}$/i.test(hexNo0x);
 }
 
-/**
- * Hiro API base URLs (mainnet/testnet)
- */
-export function getHiroBase(network: StacksNetwork): string {
-  return network === "mainnet"
-    ? "https://api.hiro.so"
-    : "https://api.testnet.hiro.so";
-}
-
-/**
- * Fetch a transaction from Hiro JSON endpoint.
- * We use the JSON tx endpoint (not /raw) to avoid BigInt serialization issues.
- */
-export async function fetchTxJson(
-  txid: string,
-  network: StacksNetwork,
-  signal?: AbortSignal
-): Promise<any> {
-  const apiBase = getHiroBase(network);
-  const url = `${apiBase}/extended/v1/tx/${txid}`;
-
+async function fetchJson(url: string) {
   const res = await fetch(url, {
-    method: "GET",
     headers: { accept: "application/json" },
-    signal,
+    // keep default caching behavior fine for vercel
   });
 
+  const contentType = res.headers.get("content-type") || "";
+
   if (!res.ok) {
-    const text = await safeReadText(res);
-    const err: any = new Error(`Could not fetch tx JSON. Status: ${res.status}`);
+    let body: any = null;
+
+    // Try parse json error if available
+    if (contentType.includes("application/json")) {
+      try {
+        body = await res.json();
+      } catch {}
+    } else {
+      try {
+        body = await res.text();
+      } catch {}
+    }
+
+    const err: any = new Error(
+      typeof body === "string"
+        ? body
+        : body?.error || body?.message || `Request failed: ${res.status}`
+    );
     err.status = res.status;
+    err.body = body;
     err.url = url;
+    throw err;
+  }
+
+  if (!contentType.includes("application/json")) {
+    // Safety: don't let HTML bubble into JSON parsing consumers
+    const text = await res.text();
+    const err: any = new Error("Non-JSON response from Hiro endpoint");
+    err.status = 502;
     err.body = text;
+    err.url = url;
     throw err;
   }
 
   return res.json();
 }
 
-/**
- * Try mainnet first, then testnet. Returns the first network that has the tx.
- * If both fail, throws a helpful error.
- */
-export async function resolveNetworkAndFetchTx(
-  txid: string,
-  preferred?: StacksNetwork,
-  signal?: AbortSignal
-): Promise<FetchTxResult> {
-  const order: StacksNetwork[] = preferred
-    ? [preferred, preferred === "mainnet" ? "testnet" : "mainnet"]
-    : ["mainnet", "testnet"];
+export async function parseStacksTransaction(opts: {
+  txid: string; // can be with or without 0x
+  network: Network;
+  eventsLimit?: number;
+}) {
+  const { txid, network, eventsLimit = 50 } = opts;
+  const base = HIRO_BASE[network];
 
-  let lastErr: any = null;
+  const { normalized, with0x } = normalizeTxid(txid);
 
-  for (const net of order) {
-    try {
-      const tx = await fetchTxJson(txid, net, signal);
-      return {
-        network: net,
-        apiBase: getHiroBase(net),
-        tx,
-        txid,
-      };
-    } catch (e: any) {
-      lastErr = e;
-      // if it's not found, keep trying the other network
-      // Hiro often uses 404 for "tx not found"
-      if (e?.status !== 404) {
-        // for other errors (rate limit/500), still try the other network,
-        // but keep the error for reporting if both fail
-      }
-    }
-  }
-
-  // If we get here, both networks failed
-  const err: any = new Error(
-    lastErr?.status === 404
-      ? "Transaction not found on mainnet or testnet (Hiro)."
-      : "Failed to fetch transaction from Hiro."
-  );
-  err.status = lastErr?.status || 500;
-  err.lastError = serializeError(lastErr);
-  throw err;
-}
-
-async function safeReadText(res: Response): Promise<string> {
-  try {
-    return await res.text();
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Make any error JSON-safe (also prevents BigInt serialization issues).
- */
-export function serializeError(err: any) {
-  try {
-    return JSON.parse(
-      JSON.stringify(
-        err,
-        (_k, v) => (typeof v === "bigint" ? v.toString() : v),
-        2
-      )
+  if (!isValidStacksTxidHex(normalized)) {
+    const err: any = new Error(
+      "That doesn’t look like a valid Stacks transaction ID (64 hex characters)."
     );
-  } catch {
-    return {
-      message: String(err?.message || err),
-      name: err?.name,
-    };
+    err.status = 400;
+    err.step = "validate";
+    throw err;
+  }
+
+  // Tx summary (JSON)
+  const txUrl = `${base}/extended/v1/tx/${with0x}`;
+  const tx: HiroTx = await fetchJson(txUrl);
+
+  // Events (JSON)
+  const eventsUrl = `${base}/extended/v1/tx/${with0x}/events?limit=${eventsLimit}&offset=0`;
+  const eventsRes: any = await fetchJson(eventsUrl);
+  const events: HiroEvent[] = Array.isArray(eventsRes?.events)
+    ? eventsRes.events
+    : Array.isArray(eventsRes)
+    ? eventsRes
+    : [];
+
+  return {
+    network,
+    txid: with0x,
+    tx,
+    events,
+    source: txUrl,
+    eventsSource: eventsUrl,
+  };
+}
+
+/**
+ * Try mainnet first, then testnet if not found.
+ * Useful when users paste random txids and don't know the network.
+ */
+export async function resolveNetworkAndFetchTx(txid: string) {
+  try {
+    return await parseStacksTransaction({ txid, network: "mainnet" });
+  } catch (e: any) {
+    if (e?.status === 404) {
+      return await parseStacksTransaction({ txid, network: "testnet" });
+    }
+    throw e;
   }
 }
