@@ -9,10 +9,7 @@ import {
 } from "@/utils/parseStacksTx";
 import { explainTransaction } from "@/features/explain-transaction/explainTx";
 
-type Body = {
-  txid?: string;
-  network?: Network | "auto";
-};
+type Body = { txid?: string; network?: Network | "auto" };
 
 function jsonError(status: number, payload: Record<string, any>) {
   return NextResponse.json(payload, { status });
@@ -24,15 +21,13 @@ export async function POST(req: NextRequest) {
 
     const txidInput = String(body?.txid ?? "");
     const network = (body?.network ?? "auto") as Body["network"];
-
     const { normalized, with0x } = normalizeTxid(txidInput);
 
     if (!isValidStacksTxidHex(normalized)) {
       return jsonError(400, {
         error: "Invalid txid",
         step: "validate",
-        message:
-          "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
+        message: "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
         txid: txidInput,
       });
     }
@@ -53,10 +48,24 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
 
-    // Prevent HTML pages from becoming "message"
+    const tried = Array.isArray(e?.triedNetworks) ? e.triedNetworks : null;
+
+    if (status === 404) {
+      return jsonError(404, {
+        error: "Transaction not found",
+        step: "lookup",
+        status,
+        triedNetworks: tried,
+        message:
+          tried?.length
+            ? `Not found on ${tried.join(" or ")}. Make sure this is a Stacks txid (not Bitcoin / other chain).`
+            : "Transaction not found on this network. Make sure this is a Stacks txid.",
+      });
+    }
+
     const msg =
       typeof e?.message === "string" && e.message.includes("<!DOCTYPE html")
-        ? "Server returned HTML instead of JSON (check your fetch URL / runtime error)."
+        ? "Server returned HTML instead of JSON (runtime error)."
         : e?.message || "Unknown error";
 
     return jsonError(status, {
@@ -65,10 +74,6 @@ export async function POST(req: NextRequest) {
       message: msg,
       status,
       source: e?.url || null,
-      note:
-        status === 404
-          ? "Transaction not found on this network."
-          : "Check server logs for details.",
     });
   }
 }

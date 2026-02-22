@@ -1,7 +1,6 @@
 // src/utils/parseStacksTx.ts
 
 export type Network = "mainnet" | "testnet";
-
 export type HiroTx = Record<string, any>;
 export type HiroEvent = Record<string, any>;
 
@@ -12,15 +11,8 @@ const HIRO_BASE: Record<Network, string> = {
 
 export function normalizeTxid(input: string) {
   const trimmed = (input || "").trim();
-  const no0x = trimmed.toLowerCase().startsWith("0x")
-    ? trimmed.slice(2)
-    : trimmed;
-
-  return {
-    raw: trimmed,
-    normalized: no0x.toLowerCase(),
-    with0x: `0x${no0x.toLowerCase()}`,
-  };
+  const no0x = trimmed.toLowerCase().startsWith("0x") ? trimmed.slice(2) : trimmed;
+  return { raw: trimmed, normalized: no0x.toLowerCase(), with0x: `0x${no0x.toLowerCase()}` };
 }
 
 export function isValidStacksTxidHex(hexNo0x: string) {
@@ -28,17 +20,12 @@ export function isValidStacksTxidHex(hexNo0x: string) {
 }
 
 async function fetchJson(url: string) {
-  const res = await fetch(url, {
-    headers: { accept: "application/json" },
-    // keep default caching behavior fine for vercel
-  });
-
+  const res = await fetch(url, { headers: { accept: "application/json" } });
   const contentType = res.headers.get("content-type") || "";
 
   if (!res.ok) {
     let body: any = null;
 
-    // Try parse json error if available
     if (contentType.includes("application/json")) {
       try {
         body = await res.json();
@@ -49,11 +36,14 @@ async function fetchJson(url: string) {
       } catch {}
     }
 
-    const err: any = new Error(
-      typeof body === "string"
-        ? body
-        : body?.error || body?.message || `Request failed: ${res.status}`
-    );
+    const msg =
+      body?.error ||
+      body?.message ||
+      (typeof body === "string" && body.trim() ? body : null) ||
+      res.statusText ||
+      `Request failed: ${res.status}`;
+
+    const err: any = new Error(msg);
     err.status = res.status;
     err.body = body;
     err.url = url;
@@ -61,7 +51,6 @@ async function fetchJson(url: string) {
   }
 
   if (!contentType.includes("application/json")) {
-    // Safety: don't let HTML bubble into JSON parsing consumers
     const text = await res.text();
     const err: any = new Error("Non-JSON response from Hiro endpoint");
     err.status = 502;
@@ -74,7 +63,7 @@ async function fetchJson(url: string) {
 }
 
 export async function parseStacksTransaction(opts: {
-  txid: string; // can be with or without 0x
+  txid: string;
   network: Network;
   eventsLimit?: number;
 }) {
@@ -92,11 +81,9 @@ export async function parseStacksTransaction(opts: {
     throw err;
   }
 
-  // Tx summary (JSON)
   const txUrl = `${base}/extended/v1/tx/${with0x}`;
   const tx: HiroTx = await fetchJson(txUrl);
 
-  // Events (JSON)
   const eventsUrl = `${base}/extended/v1/tx/${with0x}/events?limit=${eventsLimit}&offset=0`;
   const eventsRes: any = await fetchJson(eventsUrl);
   const events: HiroEvent[] = Array.isArray(eventsRes?.events)
@@ -105,27 +92,27 @@ export async function parseStacksTransaction(opts: {
     ? eventsRes
     : [];
 
-  return {
-    network,
-    txid: with0x,
-    tx,
-    events,
-    source: txUrl,
-    eventsSource: eventsUrl,
-  };
+  return { network, txid: with0x, tx, events, source: txUrl, eventsSource: eventsUrl };
 }
 
-/**
- * Try mainnet first, then testnet if not found.
- * Useful when users paste random txids and don't know the network.
- */
 export async function resolveNetworkAndFetchTx(txid: string) {
+  const tried: Network[] = [];
+
   try {
+    tried.push("mainnet");
     return await parseStacksTransaction({ txid, network: "mainnet" });
   } catch (e: any) {
-    if (e?.status === 404) {
-      return await parseStacksTransaction({ txid, network: "testnet" });
+    if (e?.status !== 404) {
+      e.triedNetworks = tried;
+      throw e;
     }
+  }
+
+  try {
+    tried.push("testnet");
+    return await parseStacksTransaction({ txid, network: "testnet" });
+  } catch (e: any) {
+    e.triedNetworks = tried;
     throw e;
   }
 }
