@@ -1,118 +1,61 @@
 // src/utils/parseStacksTx.ts
 
 export type Network = "mainnet" | "testnet";
-export type HiroTx = Record<string, any>;
-export type HiroEvent = Record<string, any>;
+export type NetworkMode = Network | "auto";
 
-const HIRO_BASE: Record<Network, string> = {
-  mainnet: "https://api.hiro.so",
-  testnet: "https://api.testnet.hiro.so",
-};
+export function normalizeStacksTxid(input: string) {
+  const raw = (input || "").trim();
+  const no0x = raw.toLowerCase().startsWith("0x") ? raw.slice(2) : raw;
+  const cleaned = no0x.replace(/[^0-9a-f]/gi, "").toLowerCase();
 
-export function normalizeTxid(input: string) {
-  const trimmed = (input || "").trim();
-  const no0x = trimmed.toLowerCase().startsWith("0x") ? trimmed.slice(2) : trimmed;
-  return { raw: trimmed, normalized: no0x.toLowerCase(), with0x: `0x${no0x.toLowerCase()}` };
+  const isValid = /^[0-9a-f]{64}$/.test(cleaned);
+  return {
+    input: raw,
+    normalized: isValid ? `0x${cleaned}` : "",
+    isValid,
+    reason: isValid ? "" : "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
+  };
 }
 
-export function isValidStacksTxidHex(hexNo0x: string) {
-  return /^[0-9a-f]{64}$/i.test(hexNo0x);
+export function getHiroBaseUrl(network: Network) {
+  // Hiro Stacks API base URLs
+  return network === "mainnet" ? "https://api.hiro.so" : "https://api.testnet.hiro.so";
 }
 
-async function fetchJson(url: string) {
-  const res = await fetch(url, { headers: { accept: "application/json" } });
-  const contentType = res.headers.get("content-type") || "";
+export async function fetchTxFromHiro(txid: string, network: Network) {
+  const base = getHiroBaseUrl(network);
+  const url = `${base}/extended/v1/tx/${txid}`;
 
-  if (!res.ok) {
-    let body: any = null;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { accept: "application/json" },
+    // Avoid caching surprises on serverless
+    cache: "no-store",
+  });
 
-    if (contentType.includes("application/json")) {
-      try {
-        body = await res.json();
-      } catch {}
-    } else {
-      try {
-        body = await res.text();
-      } catch {}
-    }
-
-    const msg =
-      body?.error ||
-      body?.message ||
-      (typeof body === "string" && body.trim() ? body : null) ||
-      res.statusText ||
-      `Request failed: ${res.status}`;
-
-    const err: any = new Error(msg);
-    err.status = res.status;
-    err.body = body;
-    err.url = url;
-    throw err;
-  }
-
-  if (!contentType.includes("application/json")) {
-    const text = await res.text();
-    const err: any = new Error("Non-JSON response from Hiro endpoint");
-    err.status = 502;
-    err.body = text;
-    err.url = url;
-    throw err;
-  }
-
-  return res.json();
+  return { res, url };
 }
 
-export async function parseStacksTransaction(opts: {
-  txid: string;
-  network: Network;
-  eventsLimit?: number;
-}) {
-  const { txid, network, eventsLimit = 50 } = opts;
-  const base = HIRO_BASE[network];
+export async function resolveNetworkAndFetchTx(txid: string, mode: NetworkMode) {
+  const tried: Array<{ network: Network; url: string; status: number; ok: boolean }> = [];
 
-  const { normalized, with0x } = normalizeTxid(txid);
+  const tryOne = async (network: Network) => {
+    const { res, url } = await fetchTxFromHiro(txid, network);
+    tried.push({ network, url, status: res.status, ok: res.ok });
+    if (!res.ok) return { ok: false as const, network, url, status: res.status, data: null as any };
+    const data = await res.json();
+    return { ok: true as const, network, url, status: res.status, data };
+  };
 
-  if (!isValidStacksTxidHex(normalized)) {
-    const err: any = new Error(
-      "That doesn’t look like a valid Stacks transaction ID (64 hex characters)."
-    );
-    err.status = 400;
-    err.step = "validate";
-    throw err;
+  if (mode === "mainnet" || mode === "testnet") {
+    const out = await tryOne(mode);
+    return { ...out, tried };
   }
 
-  const txUrl = `${base}/extended/v1/tx/${with0x}`;
-  const tx: HiroTx = await fetchJson(txUrl);
+  // auto: mainnet -> testnet
+  const main = await tryOne("mainnet");
+  if (main.ok) return { ...main, tried };
 
-  const eventsUrl = `${base}/extended/v1/tx/${with0x}/events?limit=${eventsLimit}&offset=0`;
-  const eventsRes: any = await fetchJson(eventsUrl);
-  const events: HiroEvent[] = Array.isArray(eventsRes?.events)
-    ? eventsRes.events
-    : Array.isArray(eventsRes)
-    ? eventsRes
-    : [];
-
-  return { network, txid: with0x, tx, events, source: txUrl, eventsSource: eventsUrl };
-}
-
-export async function resolveNetworkAndFetchTx(txid: string) {
-  const tried: Network[] = [];
-
-  try {
-    tried.push("mainnet");
-    return await parseStacksTransaction({ txid, network: "mainnet" });
-  } catch (e: any) {
-    if (e?.status !== 404) {
-      e.triedNetworks = tried;
-      throw e;
-    }
-  }
-
-  try {
-    tried.push("testnet");
-    return await parseStacksTransaction({ txid, network: "testnet" });
-  } catch (e: any) {
-    e.triedNetworks = tried;
-    throw e;
-  }
+  const test = await tryOne("testnet");
+  return { ...test, tried };
 }
