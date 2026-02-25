@@ -1,72 +1,157 @@
 # Explain My Transaction
 
-**Explain My Transaction** is a UX-first tool that helps users understand what actually happened in a Stacks transaction — in plain, human-readable language.
+Turn a Stacks transaction ID into a clean, human-readable breakdown.
 
-Most blockchain explorers expose raw data.  
-This project focuses on **meaning, clarity, and trust**.
+Blockchain explorers show raw data.
+We show clarity.
 
----
+Live Product: https://explain-my-transaction.vercel.app
 
-## Problem
+⸻
 
-For many users, interacting with Stacks feels opaque:
+# The Problem
 
-- Transactions show hashes, hex, and fields without explanation
-- Users often sign transactions without fully understanding the outcome
-- Explorers are optimized for developers, not everyday users
-- Confusion during onboarding leads to mistrust and drop-off
+Blockchain transactions are powerful, but confusing.
 
-This problem is especially visible for **non-technical users** entering the Stacks ecosystem.
+Explorers expose:
+	•	Raw JSON
+	•	Hex values
+	•	Technical fields
+	•	Developer-centric data
 
----
+For most users, this creates friction.
 
-## Solution
+Web3 adoption depends on better UX.
 
-Explain My Transaction translates raw Stacks transactions into clear explanations that answer questions like:
+⸻
 
-- What type of transaction was this?
-- What did it do to my wallet?
-- How was it anchored?
-- Why did it succeed or fail?
+# The Solution
 
-The goal is **not abstraction**, but **understanding**.
+Explain My Transaction transforms a Stacks txid into a structured, product-style summary:
+	•	Transaction Type
+	•	Sender
+	•	Recipient / Contract Target
+	•	Fee
+	•	Amount (when applicable)
+	•	Events (transfers, contract calls, mints, etc.)
+	•	Network detection (Mainnet / Testnet)
 
----
+No jargon.
+No explorer chaos.
+Just clarity.
 
-## Current State
+⸻
 
-The project is already live and functional:
+# Built for the Stacks Ecosystem
 
-- Transaction parsing and explanation logic using Stacks tooling
-- UX-first design focused on readability and comprehension
-- A read-only Clarity helper contract deployed on Stacks mainnet
-- Production-ready web build deployed on Vercel
+	•	Powered by the Hiro Stacks API
+	•	Supports Mainnet & Testnet
+	•	Auto network resolution
+	•	Safe BigInt handling
+	•	Clean API layer architecture
 
-This demonstrates the ability to ship, iterate, and deploy on mainnet.
+Designed to make Stacks more understandable for:
+	•	Builders
+	•	Community managers
+	•	Support teams
+	•	Content creators
+	•	New Web3 users
 
----
+⸻
 
-## Mainnet Deployment (On-chain Proof)
+# Architecture
 
-The project includes a small, read-only Clarity helper contract deployed on **Stacks mainnet**.
+src/
+ ├── app/
+ │    ├── api/explain/route.ts
+ │    └── page.tsx
+ │
+ ├── features/
+ │    └── explain-transaction/
+ │         └── explainTx.ts
+ │
+ └── utils/
+      └── parseStacksTx.ts
 
-- Purpose: act as an on-chain UX anchor for explanation and wallet-story tooling
-- The contract is intentionally simple and safe
-- It provides verifiable proof of Stacks-native development
+Flow
+	1.	User submits txid
+	2.	API route fetches raw transaction
+	3.	Transaction is parsed
+	4.	Explanation layer transforms it into human-readable output
+	5.	UI renders structured product cards
 
-> The contract does not move funds or perform complex logic.  
-> It exists to support UX tooling and future extensions.
+⸻
 
----
+# Tech Stack
 
-## Repository Structure
+	•	Next.js 16 (App Router)
+	•	TypeScript
+	•	Tailwind CSS
+	•	Hiro API
+	•	Vercel
 
-This repository contains **two clearly separated parts**:
+⸻
 
-```text
-/
-├─ src/                      # Next.js application (UX + logic)
-├─ wallet-story-contract/    # Clarity smart contract tooling
-├─ README.md
-├─ PROGRESS.md
-└─ STACKS.md
+# Local Development
+
+git clone https://github.com/YOUR_USERNAME/explain-my-transaction.git
+cd explain-my-transaction
+npm install
+npm run dev
+
+Open:
+http://localhost:3000
+
+⸻
+
+# Security
+
+	•	No wallet connection required
+	•	No private keys stored
+	•	Public on-chain data only
+	•	Sensitive files excluded via .gitignore
+
+⸻
+
+# Vision
+
+Web3 UX needs to feel like Web2.
+
+This project is a step toward:
+	•	Human-readable blockchain
+	•	On-chain transparency tools
+	•	Developer-friendly UX layers
+	•	Better onboarding for crypto ecosystems
+
+Future directions:
+	•	Token metadata enrichment
+	•	Explorer deep-linking
+	•	STX value formatting
+	•	Historical tx analytics
+	•	Multi-chain expansion
+
+⸻
+
+# Contributing
+
+Contributions are welcome.
+
+Open an issue for:
+	•	Feature requests
+	•	UX improvements
+	•	API enhancements
+	•	Parsing improvements
+
+⸻
+
+# License
+
+MIT
+
+⸻
+
+# Author
+
+Grimaldo
+
+Focused on building clarity tools for Web3.
