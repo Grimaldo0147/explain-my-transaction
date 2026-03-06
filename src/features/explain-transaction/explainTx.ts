@@ -1,108 +1,156 @@
-// src/features/explain-transaction/explainTx.ts
-
-type AnyObj = Record<string, any>;
-
-function fmtStx(microStxLike: string | number | null | undefined) {
-  if (microStxLike == null) return "—";
-  const n = typeof microStxLike === "number" ? microStxLike : Number(microStxLike);
-  if (!Number.isFinite(n)) return String(microStxLike);
-  return `${(n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 6 })} STX`;
-}
-
-function safeStr(v: any) {
-  if (v == null) return "—";
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return String(v);
-  return JSON.stringify(v);
-}
-
-function pickAmountAndRecipient(tx: AnyObj) {
-  // Hiro tx objects usually include one of these depending on tx_type
-  if (tx?.tx_type === "token_transfer" && tx?.token_transfer) {
-    const tt = tx.token_transfer;
+export function explainTransaction(tx: any) {
+  if (!tx) {
     return {
-      amount: safeStr(tt.amount),
-      amountLabel: tt.asset_identifier ? `${tt.amount} (${tt.asset_identifier})` : safeStr(tt.amount),
-      recipient: safeStr(tt.recipient_address),
-      sender: safeStr(tt.sender_address ?? tx.sender_address),
+      summary: "Transaction could not be parsed.",
+      type: "unknown",
+      events: [],
+      eventsCount: 0,
     };
   }
 
-  if (tx?.tx_type === "stx_transfer" && tx?.stx_transfer) {
-    const st = tx.stx_transfer;
-    return {
-      amount: safeStr(st.amount),
-      amountLabel: fmtStx(st.amount),
-      recipient: safeStr(st.recipient_address),
-      sender: safeStr(st.sender_address ?? tx.sender_address),
-    };
+  function shortAddr(addr?: string | null) {
+    if (!addr) return "";
+    if (addr.length <= 14) return addr;
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   }
 
-  // Contract calls / smart contracts / coinbase etc
+  function microToStx(value?: string | number | null) {
+    if (value === undefined || value === null || value === "") return null;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    return num / 1_000_000;
+  }
+
+  function formatStx(value?: string | number | null) {
+    const stx = microToStx(value);
+    if (stx === null) return null;
+    return `${stx} STX`;
+  }
+
+  function normalizeContractName(contractId?: string | null) {
+    if (!contractId) return null;
+
+    const contractPart = contractId.split(".")[1] || contractId;
+    const lower = contractPart.toLowerCase();
+
+    if (lower.includes("velar")) return "Velar router";
+    if (lower.includes("alex")) return "ALEX router";
+    if (lower.includes("bitflow")) return "Bitflow router";
+    if (lower.includes("arkadiko")) return "Arkadiko contract";
+    if (lower.includes("zest")) return "Zest contract";
+    if (lower.includes("wrapper")) return contractPart.replace(/-/g, " ");
+
+    return contractPart.replace(/-/g, " ");
+  }
+
+  const type = tx.tx_type || "unknown";
+  const sender = tx.sender_address || null;
+  const feeMicro =
+    tx.fee ??
+    tx.fee_rate ??
+    null;
+
+  const feeStx = microToStx(feeMicro);
+  const feeLabel = feeStx !== null ? `${feeStx} STX` : "a network fee";
+
+  const block = tx.block_height || null;
+  const time = tx.burn_block_time_iso || tx.block_time_iso || null;
+  const status = tx.tx_status || null;
+
+  let recipient = null;
+  let contract = null;
+  let functionName = null;
+  let amountMicro = null;
+
+  if (type === "token_transfer") {
+    recipient = tx.token_transfer?.recipient_address || null;
+    amountMicro = tx.token_transfer?.amount || null;
+  }
+
+  if (type === "contract_call") {
+    contract = tx.contract_call?.contract_id || null;
+    functionName = tx.contract_call?.function_name || null;
+  }
+
+  if (type === "smart_contract") {
+    contract = tx.smart_contract?.contract_id || null;
+  }
+
+  const amountStx = microToStx(amountMicro);
+
+  const events = Array.isArray(tx.events) ? tx.events : [];
+  const eventsCount = events.length;
+
+  // Basic protocol detection
+  const prettyContractName = normalizeContractName(contract);
+
+  // Basic swap detection
+  let swapSummary: any = null;
+
+  if (type === "contract_call" && contract) {
+    const lowerContract = contract.toLowerCase();
+    const lowerFn = String(functionName || "").toLowerCase();
+
+    const looksLikeDex =
+      lowerContract.includes("velar") ||
+      lowerContract.includes("alex") ||
+      lowerContract.includes("bitflow") ||
+      lowerFn.includes("swap");
+
+    if (looksLikeDex) {
+      swapSummary = {
+        protocol:
+          lowerContract.includes("velar")
+            ? "Velar"
+            : lowerContract.includes("alex")
+            ? "ALEX"
+            : lowerContract.includes("bitflow")
+            ? "Bitflow"
+            : "DEX",
+        note: "Possible swap detected through a DEX router contract.",
+      };
+    }
+  }
+
+  let summary = "This transaction was processed on the Stacks network.";
+
+  if (type === "token_transfer") {
+    const fromLabel = shortAddr(sender);
+    const toLabel = shortAddr(recipient);
+    const amtLabel = amountStx !== null ? `${amountStx} STX` : "some STX";
+
+    summary = `This transaction sent ${amtLabel} from ${fromLabel} to ${toLabel}, paying ${feeLabel} in fees.`;
+  } else if (type === "contract_call") {
+    const contractLabel = prettyContractName || "a smart contract";
+    const fromLabel = shortAddr(sender);
+
+    if (swapSummary) {
+      summary = `This transaction likely executed a swap through ${swapSummary.protocol}, submitted by ${fromLabel}, and paid ${feeLabel} in fees.`;
+    } else {
+      summary = `This transaction executed a contract call to ${contractLabel}, submitted by ${fromLabel}, paying ${feeLabel} in fees.`;
+    }
+  } else if (type === "smart_contract") {
+    const contractLabel = prettyContractName || "a smart contract";
+    const fromLabel = shortAddr(sender);
+    summary = `This transaction deployed ${contractLabel}, submitted by ${fromLabel}, and paid ${feeLabel} in fees.`;
+  }
+
   return {
-    amount: "—",
-    amountLabel: "—",
-    recipient: tx?.contract_call?.contract_id
-      ? safeStr(tx.contract_call.contract_id)
-      : tx?.smart_contract?.contract_id
-        ? safeStr(tx.smart_contract.contract_id)
-        : "—",
-    sender: safeStr(tx.sender_address),
+    summary,
+    txid: tx.tx_id,
+    type,
+    status,
+    feeStx,
+    amountStx,
+    sender,
+    recipientOrTarget: recipient || contract || null,
+    contract,
+    contractName: prettyContractName,
+    functionName,
+    blockHeight: block,
+    timeIso: time,
+    events,
+    eventsCount,
+    swapSummary,
   };
-}
-
-export function explainTransaction(tx: AnyObj, events: AnyObj[] | null) {
-  const { amountLabel, recipient, sender } = pickAmountAndRecipient(tx);
-
-  const type = safeStr(tx.tx_type ?? "—");
-  const status = safeStr(tx.tx_status ?? "—");
-  const feeRate = tx.fee_rate ?? tx.fee ?? tx.fee_rate;
-  const fee = feeRate != null ? `${Number(feeRate).toLocaleString()} µSTX` : "—";
-
-  const block = tx.block_height != null ? safeStr(tx.block_height) : "—";
-  const timeIso = tx.burn_block_time_iso ?? tx.receipt_time_iso ?? null;
-  const time = timeIso ? new Date(timeIso).toLocaleString() : "—";
-
-  const eventCount =
-    typeof tx.event_count === "number"
-      ? tx.event_count
-      : Array.isArray(events)
-        ? events.length
-        : "—";
-
-  const headline =
-    type === "stx_transfer"
-      ? "STX transfer"
-      : type === "token_transfer"
-        ? "Token transfer"
-        : type === "contract_call"
-          ? "Contract call"
-          : type === "smart_contract"
-            ? "Contract deploy"
-            : "Stacks transaction";
-
-  const cards = [
-    { title: "Sender", value: sender },
-    { title: "Recipient / Target", value: recipient },
-    { title: "Amount", value: amountLabel },
-    { title: "Fee rate", value: fee },
-    { title: "Type", value: type },
-    { title: "Status", value: status },
-    { title: "Block height", value: block },
-    { title: "Time", value: time },
-    { title: "Events", value: safeStr(eventCount) },
-  ];
-
-  const compactEvents =
-    Array.isArray(events) && events.length
-      ? events.slice(0, 30).map((e) => ({
-          event_type: e.event_type ?? e.type ?? "—",
-          asset_identifier: e.asset?.asset_identifier ?? e.asset_identifier ?? undefined,
-          sender: e.sender ?? e.from ?? undefined,
-          recipient: e.recipient ?? e.to ?? undefined,
-          amount: e.amount ?? e.value ?? undefined,
-        }))
-      : [];
-
-  return { headline, cards, events: compactEvents };
 }

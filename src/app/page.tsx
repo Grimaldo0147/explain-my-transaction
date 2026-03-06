@@ -4,483 +4,620 @@ import React, { useMemo, useState } from "react";
 
 type Network = "auto" | "mainnet" | "testnet";
 
-type ExplainResponse = {
-  ok?: boolean;
-  network?: "mainnet" | "testnet";
-  txid?: string;
-
-  // Product cards
-  summary?: {
-    type?: string;
-    sender?: string;
-    recipient?: string;
-    contract?: string;
-    amount?: string; // already formatted
-    fee?: string; // already formatted
-    status?: string;
-    blockHeight?: number | string;
-    timestamp?: string;
-    memo?: string;
-  };
-
-  events?: Array<{
-    kind?: string;
-    title?: string;
-    details?: string;
-    amount?: string;
-    asset?: string;
-    from?: string;
-    to?: string;
-    contract?: string;
-  }>;
-
-  // errors
-  error?: string;
-  message?: string;
-  status?: number;
-  step?: string;
-  source?: string;
-  note?: string;
-};
-
-function clsx(...a: Array<string | false | null | undefined>) {
-  return a.filter(Boolean).join(" ");
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
 }
 
-function isValidHex64(s: string) {
+function isStacksTxid(tx: string) {
+  const t = (tx || "").trim();
+  const s = t.startsWith("0x") ? t.slice(2) : t;
   return /^[0-9a-fA-F]{64}$/.test(s);
 }
 
-function normalizeTxid(input: string) {
+function extractTxid(input: string) {
   const raw = (input || "").trim();
-  const no0x = raw.toLowerCase().startsWith("0x") ? raw.slice(2) : raw;
-  return no0x;
+
+  if (isStacksTxid(raw)) {
+    const s = raw.startsWith("0x") ? raw : `0x${raw}`;
+    return { txid: s.toLowerCase() };
+  }
+
+  try {
+    const url = new URL(raw);
+    const path = url.pathname || "";
+    const parts = path.split("/").filter(Boolean);
+    const idx = parts.indexOf("txid");
+
+    if (idx !== -1 && parts[idx + 1]) {
+      const maybe = parts[idx + 1];
+      if (isStacksTxid(maybe)) {
+        const s = maybe.startsWith("0x") ? maybe : `0x${maybe}`;
+        return { txid: s.toLowerCase() };
+      }
+    }
+  } catch {}
+
+  const m = raw.match(/(0x)?[0-9a-fA-F]{64}/);
+  if (m?.[0]) {
+    const found = m[0].startsWith("0x") ? m[0] : `0x${m[0]}`;
+    return { txid: found.toLowerCase() };
+  }
+
+  return { txid: "" };
 }
 
-function shortAddr(s?: string, left = 6, right = 4) {
+function shortHash(s: string) {
   if (!s) return "—";
-  if (s.length <= left + right + 3) return s;
-  return `${s.slice(0, left)}…${s.slice(-right)}`;
+  if (s.length <= 18) return s;
+  return `${s.slice(0, 10)}…${s.slice(-8)}`;
 }
 
-// Avoid replaceAll for older TS targets
-function prettifyKind(kind?: string) {
-  if (!kind) return "Event";
-  // replaces ALL underscores using regex global
-  const spaced = kind.replace(/_/g, " ");
-  return spaced;
+function shortenAddr(a: string) {
+  if (!a) return "—";
+  if (a.length <= 20) return a;
+  return `${a.slice(0, 8)}…${a.slice(-6)}`;
 }
 
-function CopyButton({ value }: { value: string }) {
+function formatKind(kind: string) {
+  if (!kind) return "—";
+  return kind.split("_").join(" ");
+}
+
+function safeText(value: any): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function eventLine(ev: any): string {
+  if (!ev || typeof ev !== "object") return safeText(ev);
+
+  if (ev.contractId) return safeText(ev.contractId);
+  if (ev.asset) return safeText(ev.asset);
+
+  if (ev.sender || ev.recipient) {
+    return `${safeText(ev.sender || "?")} → ${safeText(ev.recipient || "?")}`;
+  }
+
+  if (ev.memo) return `Memo: ${safeText(ev.memo)}`;
+
+  const keys = Object.keys(ev);
+  if (keys.length === 0) return "—";
+
+  const preview: Record<string, any> = {};
+  for (const k of keys.slice(0, 5)) {
+    preview[k] = ev[k];
+  }
+  return safeText(preview);
+}
+
+function Badge({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "green" | "red" | "blue" | "purple";
+}) {
+  const cls =
+    tone === "green"
+      ? "border-emerald-500/25 bg-emerald-500/15 text-emerald-200"
+      : tone === "red"
+      ? "border-rose-500/25 bg-rose-500/15 text-rose-200"
+      : tone === "blue"
+      ? "border-sky-500/25 bg-sky-500/15 text-sky-200"
+      : tone === "purple"
+      ? "border-fuchsia-500/25 bg-fuchsia-500/15 text-fuchsia-200"
+      : "border-white/10 bg-white/5 text-white/70";
+
+  return (
+    <span className={cx("inline-flex items-center rounded-full border px-2.5 py-1 text-xs", cls)}>
+      {children}
+    </span>
+  );
+}
+
+function Card({
+  title,
+  subtitle,
+  right,
+  children,
+  className,
+}: {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx(
+        "rounded-3xl border border-white/10 bg-white/[0.04] shadow-[0_20px_80px_-50px_rgba(0,0,0,1)] backdrop-blur-xl",
+        className
+      )}
+    >
+      <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+        <div>
+          <div className="text-sm font-semibold text-white/90">{title}</div>
+          {subtitle ? <div className="mt-0.5 text-xs text-white/45">{subtitle}</div> : null}
+        </div>
+        {right}
+      </div>
+      <div className="px-5 py-4">{children}</div>
+    </div>
+  );
+}
+
+function Row({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2">
+      <div className="text-xs text-white/50">{k}</div>
+      <div className={cx("text-right text-sm text-white/85", mono && "font-mono text-[13px]")}>{v}</div>
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 900);
+    } catch {}
+  }
+
   return (
     <button
+      onClick={onCopy}
       type="button"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 900);
-        } catch {}
-      }}
-      className={clsx(
-        "rounded-xl px-3 py-1.5 text-xs font-semibold",
-        "bg-white/10 hover:bg-white/15 active:bg-white/20",
-        "border border-white/10"
-      )}
-      aria-label="Copy"
-      title="Copy"
+      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/75 transition hover:bg-white/10"
     >
       {copied ? "Copied" : "Copy"}
     </button>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  sub,
-  right,
-}: {
-  label: string;
-  value: React.ReactNode;
-  sub?: React.ReactNode;
-  right?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 shadow-[0_10px_30px_-20px_rgba(0,0,0,.6)]">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-semibold tracking-wide text-white/60">{label}</div>
-          <div className="mt-1 text-base font-semibold text-white">{value}</div>
-          {sub ? <div className="mt-1 text-xs text-white/55">{sub}</div> : null}
-        </div>
-        {right ? <div className="shrink-0">{right}</div> : null}
-      </div>
-    </div>
-  );
-}
-
-function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div className="mb-3">
-      <div className="text-sm font-semibold text-white/80">{title}</div>
-      {subtitle ? <div className="mt-0.5 text-xs text-white/50">{subtitle}</div> : null}
-    </div>
-  );
-}
-
 export default function Page() {
-  const [txidInput, setTxidInput] = useState("");
+  const [input, setInput] = useState("");
   const [network, setNetwork] = useState<Network>("auto");
   const [loading, setLoading] = useState(false);
-  const [res, setRes] = useState<ExplainResponse | null>(null);
+  const [result, setResult] = useState<any | null>(null);
+  const [error, setError] = useState<any | null>(null);
 
-  const normalized = useMemo(() => {
-    const n = normalizeTxid(txidInput);
-    return n ? `0x${n}` : "";
-  }, [txidInput]);
-
-  const validationError = useMemo(() => {
-    const n = normalizeTxid(txidInput);
-    if (!n) return "";
-    if (!isValidHex64(n)) return "That doesn’t look like a valid Stacks transaction ID (64 hex characters).";
-    return "";
-  }, [txidInput]);
+  const extracted = useMemo(() => extractTxid(input), [input]);
 
   async function onExplain() {
-    const n = normalizeTxid(txidInput);
-    if (!n) {
-      setRes({ error: "Please paste a transaction ID." });
-      return;
-    }
-    if (!isValidHex64(n)) {
-      setRes({ error: "That doesn’t look like a valid Stacks transaction ID (64 hex characters)." });
+    setError(null);
+    setResult(null);
+
+    const txid = extracted.txid;
+
+    if (!txid || !isStacksTxid(txid)) {
+      setError({
+        error: "That doesn’t look like a valid Stacks transaction ID (64 hex characters).",
+        step: "validate",
+        status: 400,
+      });
       return;
     }
 
     setLoading(true);
-    setRes(null);
 
     try {
-      const r = await fetch("/api/explain", {
+      const res = await fetch("/api/explain", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ txid: `0x${n}`, network }),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          input: input.trim(),
+          txid,
+          network,
+        }),
       });
 
-      // handle non-json (html) safely
-      const ct = r.headers.get("content-type") || "";
-      let data: ExplainResponse;
+      const ct = res.headers.get("content-type") || "";
+      let payload: any;
+
       if (ct.includes("application/json")) {
-        data = await r.json();
+        payload = await res.json();
       } else {
-        const raw = await r.text();
-        data = {
-          error: "Server error while explaining transaction.",
-          message: raw.slice(0, 250),
-          status: r.status,
-          step: "explain",
+        const text = await res.text();
+        payload = {
+          ok: false,
+          error: "Server returned non-JSON response.",
+          raw: text,
+          status: res.status,
         };
       }
 
-      if (!r.ok) {
-        setRes({
-          error: data?.error || "Server error while explaining transaction.",
-          message: data?.message || r.statusText,
-          status: data?.status ?? r.status,
-          step: data?.step || "explain",
-          network: data?.network,
-          source: data?.source,
-          note: data?.note,
-        });
-      } else {
-        setRes(data);
+      if (!res.ok || payload?.ok === false) {
+        setError(payload);
+        return;
       }
+
+      setResult(payload.data ?? payload);
     } catch (e: any) {
-      setRes({
-        error: "Server error while explaining transaction.",
+      setError({
+        error: "Network error while explaining transaction.",
+        step: "fetch",
         message: e?.message || "Unknown error",
-        status: 500,
-        step: "explain",
+        status: 0,
       });
     } finally {
       setLoading(false);
     }
   }
 
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onExplain();
+    }
+  }
+
+  const summary = result?.summary as string | undefined;
+  const txid = result?.txid as string | undefined;
+  const type = result?.type as string | undefined;
+  const status = result?.status as string | undefined;
+  const feeStx = result?.feeStx as string | undefined;
+  const amountStx = result?.amountStx as string | undefined;
+  const sender = result?.sender as string | undefined;
+  const recipient = result?.recipientOrTarget as string | undefined;
+  const contract = result?.contract as string | undefined;
+  const blockHeight = result?.blockHeight as number | undefined;
+  const timeIso = result?.timeIso as string | undefined;
+  const networkDetected = result?.network as string | undefined;
+  const eventsCount =
+    result?.eventsCount ?? (Array.isArray(result?.events) ? result.events.length : 0);
+  const events: any[] = Array.isArray(result?.events) ? result.events : [];
+  const swapSummary = result?.swapSummary;
+
+  const explorerUrl = txid
+    ? `https://explorer.hiro.so/txid/${txid}${networkDetected === "testnet" ? "?chain=testnet" : ""}`
+    : "";
+
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* background glow */}
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute left-[-10%] top-[-15%] h-[500px] w-[500px] rounded-full bg-fuchsia-600/20 blur-[90px]" />
-        <div className="absolute right-[-10%] top-[10%] h-[520px] w-[520px] rounded-full bg-cyan-500/18 blur-[100px]" />
-        <div className="absolute left-[20%] bottom-[-25%] h-[620px] w-[620px] rounded-full bg-emerald-500/12 blur-[110px]" />
+      <div className="pointer-events-none fixed inset-0">
+        <div className="absolute left-1/2 top-0 h-[420px] w-[900px] -translate-x-1/2 rounded-full bg-gradient-to-r from-fuchsia-500/20 via-sky-500/15 to-emerald-500/20 blur-3xl" />
+        <div className="absolute bottom-[-180px] left-[-120px] h-[380px] w-[380px] rounded-full bg-fuchsia-500/10 blur-3xl" />
+        <div className="absolute bottom-[-200px] right-[-120px] h-[420px] w-[420px] rounded-full bg-emerald-500/10 blur-3xl" />
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 py-10">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-semibold text-white/70">
-            Explain My Transaction
-          </div>
-          <div className="text-xs text-white/40">Stacks • Hiro API</div>
+      <div className="relative mx-auto max-w-6xl px-4 pb-24 pt-14">
+        <div className="mb-6 flex items-center gap-3">
+          <Badge tone="purple">Explain My Transaction</Badge>
+          <span className="text-xs text-white/35">Stacks • Hiro API • Human-readable UX</span>
         </div>
 
-        <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
-          Turn a txid into a <span className="text-white/80">human explanation</span>
+        <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
+          Turn a txid into a
+          <span className="bg-gradient-to-r from-white to-white/55 bg-clip-text text-transparent">
+            {" "}
+            human explanation
+          </span>
         </h1>
-        <p className="mt-3 max-w-2xl text-sm text-white/55">
-          Paste a Stacks transaction ID and get a clean “product-style” breakdown: sender, recipient/target, fee, type,
-          and events.
+
+        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
+          Paste a Stacks transaction ID or a full explorer link and get a clean, readable
+          breakdown of what happened on-chain.
         </p>
 
-        {/* Input Card */}
-        <div className="mt-8 rounded-3xl border border-white/10 bg-white/[0.06] p-5 shadow-[0_30px_80px_-60px_rgba(0,0,0,.8)]">
-          <div className="grid gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
+        <div className="mt-8 rounded-3xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur-xl">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_220px_140px] md:items-end">
             <div>
               <label className="text-xs font-semibold text-white/70">Transaction ID</label>
-              <input
-                value={txidInput}
-                onChange={(e) => setTxidInput(e.target.value)}
-                placeholder="0x… (64 hex chars)"
-                className={clsx(
-                  "mt-2 w-full rounded-2xl border px-4 py-3 text-sm outline-none",
-                  "bg-black/35 border-white/10 text-white placeholder:text-white/25",
-                  "focus:border-white/25 focus:ring-2 focus:ring-white/10"
-                )}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onExplain();
-                }}
-              />
-              <div className="mt-2 text-xs text-white/45">
-                Tip: you can paste with <span className="font-semibold text-white/60">0x</span> — we handle it.
+              <div className="mt-2 rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  className="w-full bg-transparent font-mono text-[13px] text-white/85 outline-none placeholder:text-white/25"
+                  placeholder="0x... or https://explorer.hiro.so/txid/0x..."
+                />
               </div>
-              {normalized ? (
-                <div className="mt-1 text-xs text-white/35">
-                  Normalized: <span className="font-mono">{normalized}</span>
-                </div>
-              ) : null}
-              {validationError ? (
-                <div className="mt-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                  {validationError}
-                </div>
-              ) : null}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/40">
+                <span>Tip: paste a txid or full explorer link.</span>
+                {extracted.txid ? (
+                  <>
+                    <span className="text-white/20">•</span>
+                    <span>Normalized:</span>
+                    <span className="font-mono text-white/65">{extracted.txid}</span>
+                  </>
+                ) : null}
+              </div>
             </div>
 
             <div>
               <label className="text-xs font-semibold text-white/70">Network</label>
-              <select
-                value={network}
-                onChange={(e) => setNetwork(e.target.value as Network)}
-                className={clsx(
-                  "mt-2 w-full rounded-2xl border px-4 py-3 text-sm outline-none",
-                  "bg-black/35 border-white/10 text-white",
-                  "focus:border-white/25 focus:ring-2 focus:ring-white/10"
-                )}
-              >
-                <option value="auto">Auto</option>
-                <option value="mainnet">Mainnet</option>
-                <option value="testnet">Testnet</option>
-              </select>
-              <div className="mt-2 text-xs text-white/40">Auto tries mainnet → testnet.</div>
+              <div className="mt-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-3">
+                <select
+                  value={network}
+                  onChange={(e) => setNetwork(e.target.value as Network)}
+                  className="w-full bg-transparent text-sm text-white/85 outline-none"
+                >
+                  <option value="auto">Auto</option>
+                  <option value="mainnet">Mainnet</option>
+                  <option value="testnet">Testnet</option>
+                </select>
+              </div>
+              <div className="mt-2 text-xs text-white/35">Auto tries mainnet → testnet.</div>
             </div>
 
             <button
-              type="button"
               onClick={onExplain}
               disabled={loading}
-              className={clsx(
-                "h-[46px] rounded-2xl px-6 text-sm font-semibold",
-                "bg-white text-black hover:bg-white/90 active:bg-white/80",
-                "disabled:opacity-60 disabled:cursor-not-allowed"
-              )}
+              type="button"
+              className="h-[52px] w-full rounded-2xl bg-white text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/60"
             >
               {loading ? "Explaining…" : "Explain"}
             </button>
           </div>
         </div>
 
-        {/* Error */}
-        {res?.error ? (
+        {loading ? (
+          <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/65">
+            Working… fetching transaction and building explanation.
+          </div>
+        ) : null}
+
+        {error ? (
           <div className="mt-6 rounded-3xl border border-rose-500/25 bg-rose-500/10 p-5">
-            <div className="text-sm font-semibold text-rose-100">{res.error}</div>
-            <div className="mt-2 text-xs text-rose-100/70">
-              {res.step ? (
-                <>
-                  Step: <span className="font-mono">{res.step}</span> •{" "}
-                </>
+            <div className="text-sm font-semibold text-rose-100">{error.error || "Something went wrong."}</div>
+            <div className="mt-2 text-xs text-rose-100/80">
+              {error.step ? (
+                <span className="mr-2">
+                  Step: <span className="font-mono">{error.step}</span>
+                </span>
               ) : null}
-              {typeof res.status !== "undefined" ? (
-                <>
-                  Status: <span className="font-mono">{res.status}</span>
-                </>
+              {typeof error.status === "number" ? (
+                <span>
+                  Status: <span className="font-mono">{error.status}</span>
+                </span>
               ) : null}
             </div>
-            {res.message ? <div className="mt-2 text-xs text-rose-100/80">{res.message}</div> : null}
-            {res.source ? (
-              <div className="mt-3 text-xs text-rose-100/70">
-                Source: <span className="font-mono break-all">{res.source}</span>
+
+            {error.message || error.note || error.source ? (
+              <div className="mt-3 space-y-1 text-xs text-rose-100/70">
+                {error.message ? <div>Message: {error.message}</div> : null}
+                {error.note ? <div>Note: {error.note}</div> : null}
+                {error.source ? <div>Source: {error.source}</div> : null}
               </div>
             ) : null}
-            {res.note ? <div className="mt-2 text-xs text-rose-100/60">{res.note}</div> : null}
+
+            <details className="mt-3">
+              <summary className="cursor-pointer select-none text-xs text-rose-100/70">
+                Show debug
+              </summary>
+              <pre className="mt-2 max-h-[260px] overflow-auto rounded-2xl border border-white/10 bg-black/40 p-3 text-[11px] text-white/70">
+                {JSON.stringify(error, null, 2)}
+              </pre>
+            </details>
           </div>
         ) : null}
 
-        {/* Results */}
-        {res && !res.error ? (
-          <div className="mt-8 space-y-7">
+        {summary ? (
+          <div className="mt-8 rounded-3xl border border-white/10 bg-gradient-to-r from-white/[0.08] via-white/[0.05] to-white/[0.03] p-6 shadow-[0_20px_80px_-50px_rgba(0,0,0,1)] backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-xs text-white/50">Transaction</div>
-                <div className="mt-1 flex items-center gap-3">
-                  <div className="font-mono text-sm text-white">{res.txid || normalized || "—"}</div>
-                  {res.txid ? <CopyButton value={res.txid} /> : normalized ? <CopyButton value={normalized} /> : null}
-                </div>
+              <div className="flex items-center gap-2">
+                <Badge tone="blue">Human summary</Badge>
+                {networkDetected ? (
+                  <Badge tone={networkDetected === "testnet" ? "red" : "green"}>
+                    {networkDetected}
+                  </Badge>
+                ) : null}
+                {status ? (
+                  <Badge tone={status === "success" ? "green" : "neutral"}>{status}</Badge>
+                ) : null}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-xs text-white/70">
-                Network: <span className="font-semibold text-white/85">{res.network || "—"}</span>
-              </div>
+              {txid ? (
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-white/65">{shortHash(txid)}</span>
+                  <CopyButton text={txid} />
+                </div>
+              ) : null}
             </div>
 
-            <div>
-              <SectionTitle title="Overview" subtitle="High-level transaction details" />
-              <div className="grid gap-4 md:grid-cols-2">
-                <StatCard
-                  label="Type"
-                  value={res.summary?.type || "—"}
-                  sub={res.summary?.status ? `Status: ${res.summary.status}` : undefined}
-                />
-                <StatCard
-                  label="Fee"
-                  value={res.summary?.fee || "—"}
-                  sub={res.summary?.blockHeight ? `Block: ${res.summary.blockHeight}` : undefined}
-                />
-                <StatCard
-                  label="Sender"
-                  value={<span className="font-mono">{res.summary?.sender || "—"}</span>}
-                  sub={res.summary?.sender ? shortAddr(res.summary.sender) : undefined}
-                  right={res.summary?.sender ? <CopyButton value={res.summary.sender} /> : undefined}
-                />
-                <StatCard
-                  label="Recipient / Target"
-                  value={<span className="font-mono">{res.summary?.recipient || res.summary?.contract || "—"}</span>}
-                  sub={
-                    res.summary?.recipient
-                      ? shortAddr(res.summary.recipient)
-                      : res.summary?.contract
-                      ? shortAddr(res.summary.contract)
-                      : undefined
-                  }
-                  right={
-                    res.summary?.recipient ? (
-                      <CopyButton value={res.summary.recipient} />
-                    ) : res.summary?.contract ? (
-                      <CopyButton value={res.summary.contract} />
-                    ) : undefined
-                  }
-                />
-              </div>
-
-              {(res.summary?.amount || res.summary?.memo || res.summary?.timestamp) && (
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
-                  <StatCard label="Amount" value={res.summary?.amount || "—"} />
-                  <StatCard label="Timestamp" value={res.summary?.timestamp || "—"} />
-                  <StatCard label="Memo" value={res.summary?.memo || "—"} />
-                </div>
-              )}
+            <div className="mt-4 text-lg font-semibold leading-relaxed text-white/92 sm:text-xl">
+              {summary}
             </div>
 
-            <div>
-              <SectionTitle title="Events" subtitle="Transfers, contract calls, and other actions" />
-              {res.events && res.events.length ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {res.events.map((e, i) => {
-                    const kind = e.kind || "event";
-                    const title = e.title || prettifyKind(kind);
-                    const subtitle =
-                      e.details ||
-                      (e.from || e.to
-                        ? `${e.from ? `From ${shortAddr(e.from)}` : ""}${e.from && e.to ? " → " : ""}${
-                            e.to ? `To ${shortAddr(e.to)}` : ""
-                          }`
-                        : e.contract
-                        ? `Contract: ${shortAddr(e.contract, 10, 6)}`
-                        : "");
-
-                    return (
-                      <div
-                        key={`${kind}-${i}`}
-                        className="rounded-2xl border border-white/10 bg-white/[0.06] p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-white/90">{title}</div>
-                            {subtitle ? <div className="mt-1 text-xs text-white/55">{subtitle}</div> : null}
-                          </div>
-                          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/70">
-                            #{i + 1}
-                          </div>
-                        </div>
-
-                        {(e.amount || e.asset || e.from || e.to || e.contract) && (
-                          <div className="mt-3 grid gap-2 text-xs text-white/60">
-                            {e.amount ? (
-                              <div>
-                                <span className="text-white/40">Amount:</span>{" "}
-                                <span className="font-semibold text-white/80">{e.amount}</span>
-                              </div>
-                            ) : null}
-                            {e.asset ? (
-                              <div>
-                                <span className="text-white/40">Asset:</span>{" "}
-                                <span className="font-mono text-white/75">{e.asset}</span>
-                              </div>
-                            ) : null}
-                            {e.from ? (
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <span className="text-white/40">From:</span>{" "}
-                                  <span className="font-mono text-white/75">{e.from}</span>
-                                </div>
-                                <CopyButton value={e.from} />
-                              </div>
-                            ) : null}
-                            {e.to ? (
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <span className="text-white/40">To:</span>{" "}
-                                  <span className="font-mono text-white/75">{e.to}</span>
-                                </div>
-                                <CopyButton value={e.to} />
-                              </div>
-                            ) : null}
-                            {e.contract ? (
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <span className="text-white/40">Contract:</span>{" "}
-                                  <span className="font-mono text-white/75">{e.contract}</span>
-                                </div>
-                                <CopyButton value={e.contract} />
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-sm text-white/60">
-                  No events found for this transaction (or the API response didn’t include events).
-                </div>
-              )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {type ? <Badge>{formatKind(type)}</Badge> : null}
+              {feeStx ? <Badge>{feeStx} STX fee</Badge> : null}
+              {eventsCount !== undefined ? <Badge>{eventsCount} events</Badge> : null}
             </div>
           </div>
         ) : null}
 
-        <div className="mt-12 text-center text-xs text-white/30">
-          Built for a clean onboarding experience • “Explain My Transaction”
+        {result ? (
+          <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card
+              title="Overview"
+              subtitle="High-level transaction details"
+              right={
+                <div className="flex items-center gap-2">
+                  {networkDetected ? (
+                    <Badge tone={networkDetected === "testnet" ? "red" : "green"}>
+                      {networkDetected}
+                    </Badge>
+                  ) : null}
+                  {status ? (
+                    <Badge tone={status === "success" ? "green" : "neutral"}>{status}</Badge>
+                  ) : null}
+                </div>
+              }
+            >
+              <Row
+                k="TxID"
+                v={
+                  <span className="inline-flex items-center gap-2">
+                    <span className="font-mono">{shortHash(txid || "")}</span>
+                    {txid ? <CopyButton text={txid} /> : null}
+                  </span>
+                }
+                mono
+              />
+              <Row k="Type" v={type ? formatKind(type) : "—"} />
+              <Row k="Fee" v={feeStx ? `${feeStx} STX` : "—"} />
+              <Row k="Amount" v={amountStx ? `${amountStx} STX` : "—"} />
+              <Row k="Block" v={typeof blockHeight === "number" ? blockHeight : "—"} />
+              <Row k="Time" v={timeIso ? new Date(timeIso).toLocaleString() : "—"} />
+              <Row
+                k="Explorer"
+                v={
+                  explorerUrl ? (
+                    <a
+                      className="text-sky-300 underline underline-offset-4 hover:text-sky-200"
+                      href={explorerUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open in Hiro →
+                    </a>
+                  ) : (
+                    "—"
+                  )
+                }
+              />
+            </Card>
+
+            <Card title="Parties" subtitle="Sender, target, and contract">
+              <Row k="Sender" v={sender ? <span className="font-mono">{shortenAddr(sender)}</span> : "—"} mono />
+              <Row
+                k="Recipient / Target"
+                v={recipient ? <span className="font-mono">{shortenAddr(recipient)}</span> : "—"}
+                mono
+              />
+              <Row
+                k="Contract"
+                v={contract ? <span className="font-mono">{shortenAddr(contract)}</span> : "—"}
+                mono
+              />
+            </Card>
+
+            {swapSummary ? (
+              <div className="lg:col-span-2">
+                <Card
+                  title="Swap Summary"
+                  subtitle="Detected from transaction events"
+                  right={<Badge tone="purple">Swap</Badge>}
+                  className="bg-gradient-to-r from-fuchsia-500/[0.08] via-white/[0.04] to-emerald-500/[0.08]"
+                >
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-center">
+                    <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                      <div className="text-xs text-white/45">Token In</div>
+                      <div className="mt-2 text-sm font-semibold text-white/90">
+                        {safeText(swapSummary.tokenIn?.amountStx || swapSummary.tokenIn?.amount || "—")}
+                      </div>
+                      <div className="mt-1 font-mono text-xs text-white/55">
+                        {safeText(swapSummary.tokenIn?.asset || "—")}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-center text-3xl text-white/65">→</div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                      <div className="text-xs text-white/45">Token Out</div>
+                      <div className="mt-2 text-sm font-semibold text-white/90">
+                        {safeText(swapSummary.tokenOut?.amountStx || swapSummary.tokenOut?.amount || "—")}
+                      </div>
+                      <div className="mt-1 font-mono text-xs text-white/55">
+                        {safeText(swapSummary.tokenOut?.asset || "—")}
+                      </div>
+                    </div>
+                  </div>
+
+                  {swapSummary.note ? (
+                    <div className="mt-4 text-xs text-white/45">{safeText(swapSummary.note)}</div>
+                  ) : null}
+                </Card>
+              </div>
+            ) : null}
+
+            <div className="lg:col-span-2">
+              <Card
+                title="Events"
+                subtitle="Transfers, contract calls, and other actions"
+                right={<Badge>{Array.isArray(events) ? events.length : 0}</Badge>}
+              >
+                {Array.isArray(events) && events.length > 0 ? (
+                  <div className="space-y-3">
+                    {events.slice(0, 24).map((ev, i) => {
+                      const kind = ev?.kind || ev?.event_type || ev?.type || "event";
+                      const title = formatKind(String(kind));
+
+                      return (
+                        <div key={i} className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-white/85">{title}</div>
+                            <Badge>#{i + 1}</Badge>
+                          </div>
+
+                          <div className="mt-2 break-all font-mono text-xs text-white/55">
+                            {eventLine(ev)}
+                          </div>
+
+                          {(ev?.amountMicroStx || ev?.amount || ev?.functionName || ev?.memo) ? (
+                            <div className="mt-2 space-y-1 text-xs text-white/45">
+                              {ev?.amountMicroStx ? <div>Amount (microSTX): {safeText(ev.amountMicroStx)}</div> : null}
+                              {ev?.amount ? <div>Amount: {safeText(ev.amount)}</div> : null}
+                              {ev?.functionName ? <div>Function: {safeText(ev.functionName)}</div> : null}
+                              {ev?.memo ? <div>Memo: {safeText(ev.memo)}</div> : null}
+                            </div>
+                          ) : null}
+
+                          <details className="mt-3">
+                            <summary className="cursor-pointer select-none text-xs text-white/45">Raw</summary>
+                            <pre className="mt-2 max-h-[220px] overflow-auto rounded-2xl border border-white/10 bg-black/40 p-3 text-[11px] text-white/70">
+                              {JSON.stringify(ev, null, 2)}
+                            </pre>
+                          </details>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/55">
+                    No events found for this transaction.
+                  </div>
+                )}
+              </Card>
+            </div>
+
+            <div className="lg:col-span-2">
+              <details className="rounded-3xl border border-white/10 bg-white/[0.03] px-5 py-4">
+                <summary className="cursor-pointer select-none text-sm font-semibold text-white/70">
+                  Debug
+                </summary>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                    <div className="text-xs font-semibold text-white/55">Client state</div>
+                    <pre className="mt-2 overflow-auto text-[11px] text-white/70">
+                      {JSON.stringify({ input, extracted, network }, null, 2)}
+                    </pre>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                    <div className="text-xs font-semibold text-white/55">API result</div>
+                    <pre className="mt-2 max-h-[340px] overflow-auto text-[11px] text-white/70">
+                      {JSON.stringify(result, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-16 text-center text-xs text-white/25">
+          Built for clean onboarding • Explain My Transaction
         </div>
       </div>
     </main>

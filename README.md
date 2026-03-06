@@ -1,10 +1,11 @@
-# Explain My Transaction
+🔎 Explain My Transaction
 
 Turn a Stacks transaction ID into a clean, human-readable breakdown.
 
 Blockchain explorers show raw data.
 We show clarity.
 
+<<<<<<< HEAD
 Live Product: https://explain-my-transaction.vercel.app
 
 ⸻
@@ -93,6 +94,111 @@ Flow
 ⸻
 
 # Local Development
+=======
+👉 Live Product: https://explain-my-transaction.vercel.app
+
+🚀 The Problem
+
+Blockchain transactions are powerful — but confusing.
+
+Explorers expose:
+
+Raw JSON
+
+Hex values
+
+Technical fields
+
+Developer-centric data
+
+For most users, this creates friction.
+
+Web3 adoption depends on better UX.
+
+💡 The Solution
+
+Explain My Transaction transforms a Stacks txid into a structured, product-style summary:
+
+🧾 Transaction Type
+
+👤 Sender
+
+🎯 Recipient / Contract Target
+
+💸 Fee
+
+🔢 Amount (when applicable)
+
+📦 Events (transfers, contract calls, mints, etc.)
+
+🌐 Network detection (Mainnet / Testnet)
+
+No jargon.
+No explorer chaos.
+Just clarity.
+
+🟠 Built for the Stacks Ecosystem
+
+Powered by the Hiro Stacks API
+
+Supports Mainnet & Testnet
+
+Auto network resolution
+
+Safe BigInt handling
+
+Clean API layer architecture
+
+Designed to make Stacks more understandable for:
+
+Builders
+
+Community managers
+
+Support teams
+Content creators
+
+New Web3 users
+
+🏗 Architecture
+src/
+ ├── app/
+ │    ├── api/explain/route.ts
+ │    └── page.tsx
+ │
+ ├── features/
+ │    └── explain-transaction/
+ │         └── explainTx.ts
+ │
+ └── utils/
+      └── parseStacksTx.ts
+
+Flow
+
+User submits txid
+
+API route fetches raw transaction
+
+Transaction is parsed
+
+Explanation layer transforms it into human-readable output
+
+UI renders structured product cards
+
+🛠 Tech Stack
+
+Next.js 16 (App Router)
+
+TypeScript
+
+Tailwind CSS
+
+Hiro API
+
+Vercel
+
+📦 Local Development
+>>>>>>> 08e5dc5 (feat: add human-readable transaction summaries and improved Stacks tx explanation)
 
 git clone https://github.com/YOUR_USERNAME/explain-my-transaction.git
 cd explain-my-transaction
@@ -100,6 +206,7 @@ npm install
 npm run dev
 
 Open:
+<<<<<<< HEAD
 http://localhost:3000
 
 ⸻
@@ -114,10 +221,27 @@ http://localhost:3000
 ⸻
 
 # Vision
+=======
+
+http://localhost:3000
+
+🔐 Security
+
+No wallet connection required
+
+No private keys stored
+
+Public on-chain data only
+
+Sensitive files excluded via .gitignore
+
+📈 Vision
+>>>>>>> 08e5dc5 (feat: add human-readable transaction summaries and improved Stacks tx explanation)
 
 Web3 UX needs to feel like Web2.
 
 This project is a step toward:
+<<<<<<< HEAD
 	•	Human-readable blockchain
 	•	On-chain transparency tools
 	•	Developer-friendly UX layers
@@ -133,10 +257,35 @@ Future directions:
 ⸻
 
 # Contributing
+=======
+
+Human-readable blockchain
+
+On-chain transparency tools
+
+Developer-friendly UX layers
+
+Better onboarding for crypto ecosystems
+
+Future directions:
+
+Token metadata enrichment
+
+Explorer deep-linking
+
+STX value formatting
+
+Historical tx analytics
+
+Multi-chain expansion
+
+🤝 Contributing
+>>>>>>> 08e5dc5 (feat: add human-readable transaction summaries and improved Stacks tx explanation)
 
 Contributions are welcome.
 
 Open an issue for:
+<<<<<<< HEAD
 	•	Feature requests
 	•	UX improvements
 	•	API enhancements
@@ -155,3 +304,23 @@ MIT
 Grimaldo
 
 Focused on building clarity tools for Web3.
+=======
+
+Feature requests
+
+UX improvements
+
+API enhancements
+
+Parsing improvements
+
+📜 License
+
+MIT
+
+👤 Author
+
+Grimaldo
+
+Focused on building clarity tools for Web3.
+>>>>>>> 08e5dc5 (feat: add human-readable transaction summaries and improved Stacks tx explanation)
