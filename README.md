@@ -1,326 +1,199 @@
-🔎 Explain My Transaction
+# Explain My Transaction
 
-Turn a Stacks transaction ID into a clean, human-readable breakdown.
+Turn a Stacks transaction into a human-readable explanation.
 
-Blockchain explorers show raw data.
-We show clarity.
+Explain My Transaction is a developer and user tool that converts raw Stacks blockchain transactions into simple, understandable summaries.
 
-<<<<<<< HEAD
-Live Product: https://explain-my-transaction.vercel.app
+Instead of reading complex blockchain data, users can paste a transaction ID or explorer link and instantly understand what happened.
 
-⸻
+Example output:
 
-# The Problem
+"This transaction executed a contract call to the Velar router, paying 0.01 STX in fees."
 
-Blockchain transactions are powerful, but confusing.
+This tool helps improve transparency, onboarding, and developer experience across the Stacks ecosystem.
 
-Explorers expose:
-	•	Raw JSON
-	•	Hex values
-	•	Technical fields
-	•	Developer-centric data
+---
 
-For most users, this creates friction.
+## Problem
 
-Web3 adoption depends on better UX.
+Stacks transactions can be difficult to understand for new users.
 
-⸻
+A typical transaction contains raw fields like:
 
-# The Solution
+- contract_call
+- sender address
+- fee amount
+- asset events
+- function calls
 
-Explain My Transaction transforms a Stacks txid into a structured, product-style summary:
-	•	Transaction Type
-	•	Sender
-	•	Recipient / Contract Target
-	•	Fee
-	•	Amount (when applicable)
-	•	Events (transfers, contract calls, mints, etc.)
-	•	Network detection (Mainnet / Testnet)
+These details are difficult for non-developers to interpret.
 
-No jargon.
-No explorer chaos.
-Just clarity.
+Explain My Transaction solves this by translating blockchain data into human-readable explanations.
 
-⸻
+---
 
-# Built for the Stacks Ecosystem
+## Solution
 
-	•	Powered by the Hiro Stacks API
-	•	Supports Mainnet & Testnet
-	•	Auto network resolution
-	•	Safe BigInt handling
-	•	Clean API layer architecture
+Explain My Transaction parses transaction data from the Stacks blockchain and generates clear summaries describing:
 
-Designed to make Stacks more understandable for:
-	•	Builders
-	•	Community managers
-	•	Support teams
-	•	Content creators
-	•	New Web3 users
+- transaction type
+- sender and recipient
+- smart contract interactions
+- token transfers
+- fees paid
+- swap activity (DEX interactions)
 
-⸻
+This makes it easier for:
 
-# Architecture
+- new Stacks users
+- developers
+- explorers
+- analytics platforms
+- support teams
 
-src/
- ├── app/
- │    ├── api/explain/route.ts
- │    └── page.tsx
- │
- ├── features/
- │    └── explain-transaction/
- │         └── explainTx.ts
- │
- └── utils/
-      └── parseStacksTx.ts
+to quickly understand transaction behavior.
 
-Flow
-	1.	User submits txid
-	2.	API route fetches raw transaction
-	3.	Transaction is parsed
-	4.	Explanation layer transforms it into human-readable output
-	5.	UI renders structured product cards
+---
 
-⸻
+## Features
 
-# Tech Stack
+• Paste a Stacks **transaction ID**  
+• Paste a **Hiro explorer transaction link**  
+• Automatic **transaction normalization**  
+• **Human readable summaries**  
+• **Smart contract call detection**  
+• **Token transfer breakdown**  
+• **DEX swap detection (Velar, etc.)**  
+• Clean UI for transaction insights
 
-	•	Next.js 16 (App Router)
-	•	TypeScript
-	•	Tailwind CSS
-	•	Hiro API
-	•	Vercel
+Example explanation:
 
-⸻
+> This transaction executed a contract call to the Velar router, paying 0.01 STX in fees.
 
-# Local Development
-=======
-👉 Live Product: https://explain-my-transaction.vercel.app
+---
 
-🚀 The Problem
+## How It Works
 
-Blockchain transactions are powerful — but confusing.
+1. User pastes a transaction ID or explorer link
+2. The app extracts and normalizes the transaction ID
+3. The API fetches transaction data from the Stacks network using the Hiro API
+4. Transaction events are parsed and interpreted
+5. A human-readable explanation is generated and displayed
 
-Explorers expose:
+---
 
-Raw JSON
+## Tech Stack
 
-Hex values
+Frontend
+- Next.js
+- React
+- TypeScript
 
-Technical fields
+Backend
+- Next.js API Routes
 
-Developer-centric data
+Blockchain
+- Stacks
+- Hiro API
 
-For most users, this creates friction.
+Smart Contracts
+- Clarity
+- Clarinet
 
-Web3 adoption depends on better UX.
+---
 
-💡 The Solution
+## Smart Contract
 
-Explain My Transaction transforms a Stacks txid into a structured, product-style summary:
+This project includes a Clarity smart contract used for experimentation with storing transaction narratives on-chain.
 
-🧾 Transaction Type
+Location:
 
-👤 Sender
+/contracts
 
-🎯 Recipient / Contract Target
 
-💸 Fee
+Built using:
 
-🔢 Amount (when applicable)
+- Clarinet
+- Clarity smart contracts
 
-📦 Events (transfers, contract calls, mints, etc.)
+The contract demonstrates how transaction explanations could eventually be written and retrieved from the blockchain.
 
-🌐 Network detection (Mainnet / Testnet)
+---
 
-No jargon.
-No explorer chaos.
-Just clarity.
+## Project Structure
 
-🟠 Built for the Stacks Ecosystem
+explain-my-tx
+│
+├── src
+│ ├── app
+│ ├── features
+│ ├── utils
+│
+├── public
+│
+├── contracts
+│ ├── contracts
+│ ├── deployments
+│ ├── tests
+│
+├── README.md
+├── STACKS.md
+├── PROGRESS.md
 
-Powered by the Hiro Stacks API
 
-Supports Mainnet & Testnet
+---
 
-Auto network resolution
+## Example Usage
 
-Safe BigInt handling
+Paste a transaction ID:
 
-Clean API layer architecture
+0x5a047f3f7ec9221c43fdb63bc4abf1673707f3a404da13bbdad7ae670b0c81e7
 
-Designed to make Stacks more understandable for:
 
-Builders
+Or paste a full explorer link:
+https://explorer.hiro.so/txid/0x5a047f3f7ec9221c43fdb63bc4abf1673707f3a404da13bbdad7ae670b0c81e7
 
-Community managers
 
-Support teams
-Content creators
+The app will automatically extract the txid and explain the transaction.
 
-New Web3 users
+---
 
-🏗 Architecture
-src/
- ├── app/
- │    ├── api/explain/route.ts
- │    └── page.tsx
- │
- ├── features/
- │    └── explain-transaction/
- │         └── explainTx.ts
- │
- └── utils/
-      └── parseStacksTx.ts
+## Future Improvements
 
-Flow
+Planned features include:
 
-User submits txid
+- wallet transaction summaries
+- DEX swap summaries
+- NFT transaction explanations
+- shareable transaction explanation links
+- AI assisted transaction explanations
 
-API route fetches raw transaction
+---
 
-Transaction is parsed
+## Why This Matters
 
-Explanation layer transforms it into human-readable output
+Improving transaction readability helps make the Stacks ecosystem more accessible to:
 
-UI renders structured product cards
+- new crypto users
+- developers
+- analysts
+- customer support teams
+- explorers and dashboards
 
-🛠 Tech Stack
+Explain My Transaction aims to become a human-readable layer for the Stacks blockchain.
 
-Next.js 16 (App Router)
+---
 
-TypeScript
+## Built for the Stacks Ecosystem
 
-Tailwind CSS
+This project was built to improve developer and user experience within the Stacks ecosystem.
 
-Hiro API
+Learn more about Stacks:
 
-Vercel
+https://stacks.co
 
-📦 Local Development
->>>>>>> 08e5dc5 (feat: add human-readable transaction summaries and improved Stacks tx explanation)
+---
 
-git clone https://github.com/YOUR_USERNAME/explain-my-transaction.git
-cd explain-my-transaction
-npm install
-npm run dev
+## License
 
-Open:
-<<<<<<< HEAD
-http://localhost:3000
-
-⸻
-
-# Security
-
-	•	No wallet connection required
-	•	No private keys stored
-	•	Public on-chain data only
-	•	Sensitive files excluded via .gitignore
-
-⸻
-
-# Vision
-=======
-
-http://localhost:3000
-
-🔐 Security
-
-No wallet connection required
-
-No private keys stored
-
-Public on-chain data only
-
-Sensitive files excluded via .gitignore
-
-📈 Vision
->>>>>>> 08e5dc5 (feat: add human-readable transaction summaries and improved Stacks tx explanation)
-
-Web3 UX needs to feel like Web2.
-
-This project is a step toward:
-<<<<<<< HEAD
-	•	Human-readable blockchain
-	•	On-chain transparency tools
-	•	Developer-friendly UX layers
-	•	Better onboarding for crypto ecosystems
-
-Future directions:
-	•	Token metadata enrichment
-	•	Explorer deep-linking
-	•	STX value formatting
-	•	Historical tx analytics
-	•	Multi-chain expansion
-
-⸻
-
-# Contributing
-=======
-
-Human-readable blockchain
-
-On-chain transparency tools
-
-Developer-friendly UX layers
-
-Better onboarding for crypto ecosystems
-
-Future directions:
-
-Token metadata enrichment
-
-Explorer deep-linking
-
-STX value formatting
-
-Historical tx analytics
-
-Multi-chain expansion
-
-🤝 Contributing
->>>>>>> 08e5dc5 (feat: add human-readable transaction summaries and improved Stacks tx explanation)
-
-Contributions are welcome.
-
-Open an issue for:
-<<<<<<< HEAD
-	•	Feature requests
-	•	UX improvements
-	•	API enhancements
-	•	Parsing improvements
-
-⸻
-
-# License
-
-MIT
-
-⸻
-
-# Author
-
-Grimaldo
-
-Focused on building clarity tools for Web3.
-=======
-
-Feature requests
-
-UX improvements
-
-API enhancements
-
-Parsing improvements
-
-📜 License
-
-MIT
-
-👤 Author
-
-Grimaldo
-
-Focused on building clarity tools for Web3.
->>>>>>> 08e5dc5 (feat: add human-readable transaction summaries and improved Stacks tx explanation)
+MIT License

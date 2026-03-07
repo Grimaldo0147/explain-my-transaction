@@ -1,0 +1,18 @@
+---
+id: 0
+name: Mainnet deployment
+network: mainnet
+stacks-node: "https://api.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoin.blockstack.com:8332"
+plan:
+  batches:
+    - id: 0
+      transactions:
+        - contract-publish:
+            contract-name: explain-wallet-story
+            expected-sender: SP1ZP3VTHPNTKG1BN8ZX48BY0N53ZZS3N5G7B1JYK
+            cost: 3330
+            path: "contracts\\explain-wallet-story.clar"
+            anchor-block-only: true
+            clarity-version: 1
+      epoch: "2.05"
