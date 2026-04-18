@@ -1,41 +1,97 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseStacksTransaction } from "@/utils/parseStacksTx";
 import { explainTransaction } from "@/features/explain-transaction/explainTx";
 
-type Network = "mainnet" | "testnet";
+type Network = "auto" | "mainnet" | "testnet";
+
+const HIRO_BASE: Record<"mainnet" | "testnet", string> = {
+  mainnet: "https://api.hiro.so",
+  testnet: "https://api.testnet.hiro.so",
+};
 
 function normalizeTxid(input: string) {
   if (!input) return "";
-  const t = input.trim();
-  const m = t.match(/(0x)?[0-9a-fA-F]{64}/);
-  if (!m) return "";
-  return m[0].startsWith("0x") ? m[0] : `0x${m[0]}`;
+  const raw = input.trim();
+
+  const match = raw.match(/(0x)?[0-9a-fA-F]{64}/);
+  if (!match) return "";
+
+  const txid = match[0].startsWith("0x") ? match[0] : `0x${match[0]}`;
+  return txid.toLowerCase();
 }
 
-async function fetchTransaction(txid: string, network: Network) {
-  const base =
-    network === "testnet"
-      ? "https://api.testnet.hiro.so"
-      : "https://api.hiro.so";
+function jsonSafe<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, val) =>
+      typeof val === "bigint" ? val.toString() : val
+    )
+  );
+}
 
+async function fetchWithTimeout(url: string, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        "user-agent": "ExplainMyTransaction/1.0",
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    return res;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchTransaction(txid: string, network: "mainnet" | "testnet") {
+  const base = HIRO_BASE[network];
   const url = `${base}/extended/v1/tx/${txid}`;
 
-  const res = await fetch(url);
+  let res: Response;
 
-  if (!res.ok) {
-    throw new Error(`Hiro API error: ${res.status}`);
+  try {
+    res = await fetchWithTimeout(url, 15000);
+  } catch (error: any) {
+    const err: any = new Error(
+      error?.name === "AbortError"
+        ? "Request to Hiro API timed out."
+        : "Failed to connect to Hiro API."
+    );
+    err.status = 500;
+    err.source = url;
+    err.note = error?.message || "fetch failed";
+    throw err;
   }
 
-  return res.json();
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const err: any = new Error(`Hiro API error: ${res.status}`);
+    err.status = res.status;
+    err.source = url;
+    err.raw = text;
+    throw err;
+  }
+
+  return {
+    json: await res.json(),
+    source: url,
+  };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
 
-    const input = body.input || "";
-    const network = body.network || "auto";
+    const input = String(body?.input || body?.txid || "").trim();
+    const network = String(body?.network || "auto") as Network;
 
-    const txid = normalizeTxid(body.txid || input);
+    const txid = normalizeTxid(input);
 
     if (!txid) {
       return NextResponse.json(
@@ -43,45 +99,82 @@ export async function POST(req: NextRequest) {
           ok: false,
           error: "Invalid transaction ID",
           step: "validate",
+          status: 400,
+          message:
+            "That doesn’t look like a valid Stacks transaction ID or explorer link.",
         },
         { status: 400 }
       );
     }
 
-    let tx = null;
-    let detectedNetwork: Network = "mainnet";
+    let detectedNetwork: "mainnet" | "testnet" = "mainnet";
+    let txJson: any;
+    let source = "";
 
     if (network === "auto") {
       try {
-        tx = await fetchTransaction(txid, "mainnet");
+        const mainnetResult = await fetchTransaction(txid, "mainnet");
+        txJson = mainnetResult.json;
+        source = mainnetResult.source;
         detectedNetwork = "mainnet";
-      } catch {
-        tx = await fetchTransaction(txid, "testnet");
-        detectedNetwork = "testnet";
+      } catch (mainErr: any) {
+        try {
+          const testnetResult = await fetchTransaction(txid, "testnet");
+          txJson = testnetResult.json;
+          source = testnetResult.source;
+          detectedNetwork = "testnet";
+        } catch (testErr: any) {
+          return NextResponse.json(
+            jsonSafe({
+              ok: false,
+              error: "Server error while explaining transaction.",
+              step: "fetch",
+              status: testErr?.status || mainErr?.status || 500,
+              message: testErr?.message || mainErr?.message || "Unknown fetch error",
+              source: testErr?.source || mainErr?.source,
+              note: testErr?.note || mainErr?.note || "Both mainnet and testnet fetch failed.",
+              raw: testErr?.raw || mainErr?.raw,
+            }),
+            { status: testErr?.status || mainErr?.status || 500 }
+          );
+        }
       }
     } else {
-      detectedNetwork = network;
-      tx = await fetchTransaction(txid, network);
+      const fixedNetwork = network as "mainnet" | "testnet";
+      const result = await fetchTransaction(txid, fixedNetwork);
+      txJson = result.json;
+      source = result.source;
+      detectedNetwork = fixedNetwork;
     }
 
-    const explained = explainTransaction(tx);
+    const parsed = parseStacksTransaction(txJson, detectedNetwork);
+    const explained = explainTransaction(parsed);
 
-    return NextResponse.json({
-      ok: true,
-      data: {
-        ...explained,
-        network: detectedNetwork,
-      },
-    });
+    return NextResponse.json(
+      jsonSafe({
+        ok: true,
+        data: {
+          ...explained,
+          txid,
+          network: detectedNetwork,
+          source,
+        },
+      }),
+      { status: 200 }
+    );
   } catch (err: any) {
     return NextResponse.json(
-      {
+      jsonSafe({
         ok: false,
         error: "Server error while explaining transaction.",
         step: "fetch",
-        message: err.message,
-      },
-      { status: 500 }
+        status: err?.status || 500,
+        message: err?.message || "Unknown error",
+        source: err?.source,
+        note: err?.note,
+        raw: err?.raw,
+      }),
+      { status: err?.status || 500 }
     );
   }
 }
