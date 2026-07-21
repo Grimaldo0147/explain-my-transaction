@@ -1,199 +1,271 @@
-# Explain My Transaction
+ExplainMyTx
 
-Turn a Stacks transaction into a human-readable explanation.
+Turn complex Stacks transactions into human readable explanations.
 
-Explain My Transaction is a developer and user tool that converts raw Stacks blockchain transactions into simple, understandable summaries.
+ExplainMyTx is an open-source explorer companion that helps anyone understand what happened in a Stacks transaction without needing blockchain knowledge.
 
-Instead of reading complex blockchain data, users can paste a transaction ID or explorer link and instantly understand what happened.
+Instead of showing raw JSON and contract data, ExplainMyTx translates blockchain activity into plain English.
 
-Example output:
 
-"This transaction executed a contract call to the Velar router, paying 0.01 STX in fees."
+Live Demo:
 
-This tool helps improve transparency, onboarding, and developer experience across the Stacks ecosystem.
+https://explain-my-transaction.vercel.app/
 
----
 
-## Problem
+Why ExplainMyTx?
 
-Stacks transactions can be difficult to understand for new users.
+Reading blockchain transactions can be difficult.
 
-A typical transaction contains raw fields like:
+Wallets and explorers often expose:
 
-- contract_call
-- sender address
-- fee amount
-- asset events
-- function calls
+- Raw JSON
+- Hex memos
+- Contract identifiers
+- Event arrays
+- Technical transaction types
 
-These details are difficult for non-developers to interpret.
+This makes onboarding difficult for:
 
-Explain My Transaction solves this by translating blockchain data into human-readable explanations.
+- New Bitcoin users
+- Stacks users
+- Developers
+- Community managers
+- Support teams
+- Content creators
 
----
+ExplainMyTx solves this by generating easy to read explanations.
 
-## Solution
+Example:
 
-Explain My Transaction parses transaction data from the Stacks blockchain and generates clear summaries describing:
+Instead of:
 
-- transaction type
-- sender and recipient
-- smart contract interactions
-- token transfers
-- fees paid
-- swap activity (DEX interactions)
+“token_transfer”
 
-This makes it easier for:
+Users see:
 
-- new Stacks users
-- developers
-- explorers
-- analytics platforms
-- support teams
+“You sent 25 STX to Alice and paid a 0.00018 STX network fee.”
 
-to quickly understand transaction behavior.
 
----
+Features:
 
-## Features
+* Transaction Explainer
 
-• Paste a Stacks **transaction ID**  
-• Paste a **Hiro explorer transaction link**  
-• Automatic **transaction normalization**  
-• **Human readable summaries**  
-• **Smart contract call detection**  
-• **Token transfer breakdown**  
-• **DEX swap detection (Velar, etc.)**  
-• Clean UI for transaction insights
+Paste a transaction ID or Hiro Explorer link.
 
-Example explanation:
+Explains:
 
-> This transaction executed a contract call to the Velar router, paying 0.01 STX in fees.
+- STX transfers
+- Contract calls
+- Smart contract deployments
+- Token transfers
+- NFT activity
+- Fees
+- Sender
+- Recipient
+- Status
+- Block
+- Timestamp
 
----
 
-## How It Works
+* Wallet Explainer
 
-1. User pastes a transaction ID or explorer link
-2. The app extracts and normalizes the transaction ID
-3. The API fetches transaction data from the Stacks network using the Hiro API
-4. Transaction events are parsed and interpreted
-5. A human-readable explanation is generated and displayed
+Paste any Stacks wallet address.
 
----
+Instantly see:
 
-## Tech Stack
+- Recent wallet activity
+- Human-readable summaries
+- Transfers
+- Contract interactions
+- Incoming transactions
+- Outgoing transactions
 
-Frontend
+
+* Human Summaries
+
+Instead of blockchain jargon:
+
+“contract_call”
+
+Users read:
+
+“Called Arkadiko to repay a vault loan.”
+
+
+* Memo Decoder
+
+Automatically detects:
+
+- UTF-8 memos
+- ASCII memos
+- Hex memos
+
+Displays readable text whenever possible.
+
+
+* Event Timeline
+
+Each transaction is broken into readable events.
+
+Examples:
+
+- Sent STX
+- Received SIP-010 token
+- Minted NFT
+- Called contract
+- Paid fee
+
+
+* Explain This Transaction
+
+Every wallet activity card includes:
+
+- Explain this transaction
+
+One click instantly opens the full explanation.
+
+
+* Explorer Links
+
+Quick access to:
+
+- Hiro Explorer
+- Original transaction
+
+-—————————
+
+Built With:
+
 - Next.js
 - React
 - TypeScript
-
-Backend
-- Next.js API Routes
-
-Blockchain
-- Stacks
+- TailwindCSS
 - Hiro API
+- Stacks Blockchain
 
-Smart Contracts
-- Clarity
-- Clarinet
+-———————
 
----
+Roadmap:
 
-## Smart Contract
+* Phase 1
 
-This project includes a Clarity smart contract used for experimentation with storing transaction narratives on-chain.
-
-Location:
-
-/contracts
-
-
-Built using:
-
-- Clarinet
-- Clarity smart contracts
-
-The contract demonstrates how transaction explanations could eventually be written and retrieved from the blockchain.
-
----
-
-## Project Structure
-
-explain-my-tx
-│
-├── src
-│ ├── app
-│ ├── features
-│ ├── utils
-│
-├── public
-│
-├── contracts
-│ ├── contracts
-│ ├── deployments
-│ ├── tests
-│
-├── README.md
-├── STACKS.md
-├── PROGRESS.md
+- Transaction explanations
+- Wallet activity
+- Memo decoding
+- Human summaries
+- Event cards
+- Fee detection
+- Explain Transaction button
 
 
----
 
-## Example Usage
+* Phase 2 
 
-Paste a transaction ID:
+- Wallet Connect
+- Saved history
+- Shareable explanation pages
+- Better NFT explanations
+- SIP-010 token metadata
+- Multi-network improvements
+- Faster API caching
 
-0x5a047f3f7ec9221c43fdb63bc4abf1673707f3a404da13bbdad7ae670b0c81e7
+
+* Phase 3
+
+- AI-powered explanations
+- Natural language search
+
+Example:
+
+What happened in my wallet yesterday?
+
+-————————-
+
+Developer API
+
+Allow wallets and explorers to generate explanations automatically.
+
+-—————-
+
+Browser Extension
+
+Explain transactions directly inside Hiro Explorer.
+
+-—————-
+
+Vision:
+
+ExplainMyTx aims to become the easiest way to understand Stacks transactions.
+
+Rather than replacing explorers, it complements them by making blockchain activity understandable for everyone.
+
+-—————-
+
+Community Impact: 
+
+ExplainMyTx helps onboard new users, reduce support questions, improve wallet UX, educate the community and make Stacks more accessible
+
+-—————-
+
+# Open Source
+
+Contributions are welcome.
+
+Ideas include:
+
+- Better transaction parsers
+- New event decoders
+- NFT improvements
+- SIP support
+- Performance improvements
 
 
-Or paste a full explorer link:
-https://explorer.hiro.so/txid/0x5a047f3f7ec9221c43fdb63bc4abf1673707f3a404da13bbdad7ae670b0c81e7
+-————-
 
+# Deployment
 
-The app will automatically extract the txid and explain the transaction.
+The project is deployed on Vercel.
 
----
+Every push to the main branch automatically deploys a new version.
 
-## Future Improvements
+-————-
 
-Planned features include:
+# Project Status
 
-- wallet transaction summaries
-- DEX swap summaries
-- NFT transaction explanations
-- shareable transaction explanation links
-- AI assisted transaction explanations
+🟢 Active Development
 
----
+Current focus:
 
-## Why This Matters
+- Wallet Connect
+- Better contract explanations
+- AI-generated summaries
+- Public API
+- Educational resources
 
-Improving transaction readability helps make the Stacks ecosystem more accessible to:
+-—————-
 
-- new crypto users
-- developers
-- analysts
-- customer support teams
-- explorers and dashboards
+# Author
 
-Explain My Transaction aims to become a human-readable layer for the Stacks blockchain.
+Built by Grimaldo.btc
 
----
+X:
 
-## Built for the Stacks Ecosystem
+https://x.com/explainmytx?s=11
 
-This project was built to improve developer and user experience within the Stacks ecosystem.
+GitHub:
 
-Learn more about Stacks:
+https://github.com/Grimaldo0147/explain-my-transaction
 
-https://stacks.co
+-—————
 
----
-
-## License
+# License
 
 MIT License
+
+Use it.
+
+Fork it.
+
+Improve it.
+
+Help make Stacks easier for everyone.
